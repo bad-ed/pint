@@ -178,6 +178,7 @@ constexpr Integer make_truncated_int(seq<MasksAndOffsets...>, Integer value0, Va
 }
 #endif
 
+// Unsigned sum with saturation
 template<size_t Bits0, size_t ...Bits, class Integer>
 constexpr Integer add_unsigned_saturate(
     Integer sum, Integer carrys, std::true_type /* all bits are the same */)
@@ -215,6 +216,34 @@ constexpr Integer add_unsigned_saturate(
     return sum | add_unsigned_saturate2(carrys, offset_and_mask_vector<Bits...>());
 }
 
+// Signed sum with saturation
+template<size_t BitmaskLen, class Integer>
+Integer signed_payload_bits_from_overflow(Integer overflow)
+{
+    return overflow - (overflow >> (BitmaskLen-1));
+}
+
+template<size_t Bits0, class Integer>
+constexpr Integer add_signed_saturate_same_length2(Integer sum, Integer overflow)
+{
+    return sum ^ signed_payload_bits_from_overflow<Bits0>(sum & overflow);
+}
+
+template<size_t Bits0, class Integer>
+constexpr Integer add_signed_saturate_same_length(Integer sum, Integer overflow)
+{
+    return add_signed_saturate_same_length2<Bits0>(static_cast<Integer>(
+        (sum ^ overflow) | signed_payload_bits_from_overflow<Bits0>(overflow)), overflow);
+}
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr Integer add_signed_saturate(
+    Integer a, Integer b, Integer sum, std::true_type /* packs of same length */)
+{
+    using mask2 = detail::mask_for_add<Integer, Bits0, Bits...>;
+    return add_signed_saturate_same_length<Bits0>(sum, static_cast<Integer>((~(a ^ b)) & (sum ^ b) & mask2::value));
+}
+
 } // namespace detail
 
 template<size_t Bits0, size_t ...Bits, class Integer>
@@ -240,6 +269,17 @@ constexpr Integer add_unsigned_saturate(Integer a, Integer b) {
     return detail::add_unsigned_saturate<Bits0, Bits...>(
         add_wrap<Bits0, Bits...>(a, b), // potentially overflown result
         static_cast<Integer>(((a & b) | ((a | b) & ~(a + b))) & mask2::value), // carry vector
+        detail::all_same<detail::integer_seq<Bits0, Bits...>>());
+}
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr Integer add_signed_saturate(Integer a, Integer b) {
+    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
+        "Integral won't fit given number of bits");
+
+    return detail::add_signed_saturate<Bits0, Bits...>(
+        a, b,
+        add_wrap<Bits0, Bits...>(a, b),
         detail::all_same<detail::integer_seq<Bits0, Bits...>>());
 }
 

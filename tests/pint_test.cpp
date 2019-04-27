@@ -94,3 +94,53 @@ TEST(TestAddUnsignedSaturate, VarLength_WithOverflow) {
 
     ASSERT_EQ(expected_sum, (pint::add_unsigned_saturate<3,4,3>(a, b)));
 }
+
+//////////////////////////////////////////////////////////////////////////////
+
+TEST(TestAddSignedSaturate, EqualLength_Positive_NoOverflow) {
+    constexpr auto a = pint::make_truncate<uint16_t, 4, 4, 4>(1, 2, 3);
+    constexpr auto b = pint::make_truncate<uint16_t, 4, 4, 4>(2, 3, 4);
+
+    constexpr auto expected_sum = pint::make_truncate<uint16_t, 4, 4, 4>(
+        1 + 2, 2 + 3, 3 + 4);
+
+    ASSERT_EQ(expected_sum, (pint::add_signed_saturate<4,4,4>(a, b)));
+}
+
+TEST(TestAddSignedSaturate, EqualLength_Negative_NoOverflow) {
+    constexpr auto a = pint::make_truncate<uint16_t, 4, 4, 4>(-1, -2, -3);
+    constexpr auto b = pint::make_truncate<uint16_t, 4, 4, 4>(-2, -3, -4);
+
+    constexpr auto expected_sum = pint::make_truncate<uint16_t, 4, 4, 4>(
+        -1 + -2, -2 + -3, -3 + -4);
+
+    ASSERT_EQ(expected_sum, (pint::add_signed_saturate<4,4,4>(a, b)));
+}
+
+TEST(TestAddSignedSaturate, EqualLength_PositiveNegative_NoOverflow) {
+    constexpr auto a = pint::make_truncate<uint16_t, 4, 4, 4>(1, -2, 3);
+    constexpr auto b = pint::make_truncate<uint16_t, 4, 4, 4>(-2, 3, -4);
+
+    constexpr auto expected_sum = pint::make_truncate<uint16_t, 4, 4, 4>(
+        1 + -2, -2 + 3, 3 + -4);
+
+    ASSERT_EQ(expected_sum, (pint::add_signed_saturate<4,4,4>(a, b)));
+}
+
+TEST(TestAddSignedSaturate, EqualLength_Positive_Overflow) {
+    constexpr auto a = pint::make_truncate<uint16_t, 4, 4, 4>(1, 2, 3);
+    constexpr auto b = pint::make_truncate<uint16_t, 4, 4, 4>(7, 4, 6);
+
+    constexpr auto expected_sum = pint::make_truncate<uint16_t, 4, 4, 4>(7, 6, 7);
+
+    ASSERT_EQ(expected_sum, (pint::add_signed_saturate<4,4,4>(a, b)));
+}
+
+TEST(TestAddSignedSaturate, EqualLength_Negative_Overflow) {
+    constexpr auto a = pint::make_truncate<uint16_t, 4, 4, 4>(-1, -2, -3);
+    constexpr auto b = pint::make_truncate<uint16_t, 4, 4, 4>(-8, -4, -6);
+
+    constexpr auto expected_sum = pint::make_truncate<uint16_t, 4, 4, 4>(-8, -6, -8);
+
+    ASSERT_EQ(expected_sum, (pint::add_signed_saturate<4,4,4>(a, b)));
+}
