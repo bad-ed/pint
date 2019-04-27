@@ -142,6 +142,23 @@ template<class T> struct all_ones<T, 64> {
     static const T value = static_cast<T>(~0ULL);
 };
 
+// Make sequence of pairs <offset of mask, mask length>
+template<size_t... Bits>
+using mask_offsets_vector = prepend_seq<
+    size_t_<0>,
+    make_sum_vector_n<sizeof...(Bits) - 1, Bits...> // (0, Bits0, Bits0 + Bits1, Bits0 + Bits1 + Bits2, ...)
+>;
+template<size_t... Bits>
+using offset_and_mask_vector = zip<
+    mask_offsets_vector<Bits...>,
+    integer_seq<Bits...>
+>;
+template<class Integer, class OffsetAndMask>
+using shifted_mask = std::integral_constant<Integer, (
+    all_ones<Integer, take_2nd<OffsetAndMask>::value>::value <<
+        take_1st<OffsetAndMask>::value
+)>;
+
 #if __cpp_fold_expressions
 template<class Integer, class ...Values, class ...MasksAndOffsets>
 constexpr Integer make_truncated_int(seq<MasksAndOffsets...>, Values ...values)
@@ -168,12 +185,42 @@ constexpr Integer add_unsigned_saturate(
     return sum | ((carrys << 1) - (carrys >> (Bits0 - 1)));
 }
 
+#if __cpp_fold_expressions
+template<class ...OffsetAndMasks, class Integer>
+constexpr Integer add_unsigned_saturate2(Integer carrys, seq<OffsetAndMasks...>) {
+    return (... |
+        (carrys & shifted_mask<Integer, OffsetAndMasks>::value ? shifted_mask<Integer, OffsetAndMasks>::value : 0));
+}
+#else
+template<class Integer>
+constexpr Integer add_unsigned_saturate2(Integer carrys, seq<>) {
+    return 0;
+}
+
+template<class ...OffsetAndMasks, class Integer>
+constexpr Integer add_unsigned_saturate2(
+    Integer carrys, seq<OffsetAndMasks...>)
+{
+    using offset_and_mask = take_1st<seq<OffsetAndMasks...>>;
+
+    return (carrys & shifted_mask<Integer, offset_and_mask>::value ? shifted_mask<Integer, offset_and_mask>::value : 0) |
+        add_unsigned_saturate2(carrys, pop_front<seq<OffsetAndMasks...>>());
+}
+#endif
+
+template<size_t ...Bits, class Integer>
+constexpr Integer add_unsigned_saturate(
+    Integer sum, Integer carrys, std::false_type /* packs of variable length */)
+{
+    return sum | add_unsigned_saturate2(carrys, offset_and_mask_vector<Bits...>());
+}
+
 } // namespace detail
 
 template<size_t Bits0, size_t ...Bits, class Integer>
 constexpr Integer add_wrap(Integer a, Integer b) {
     static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
-        "Integral won't fit give number of bits");
+        "Integral won't fit given number of bits");
 
     using mask2 = detail::mask_for_add<Integer, Bits0, Bits...>;
     using mask1 = std::integral_constant<Integer, (~mask2::value)
@@ -186,7 +233,7 @@ constexpr Integer add_wrap(Integer a, Integer b) {
 template<size_t Bits0, size_t ...Bits, class Integer>
 constexpr Integer add_unsigned_saturate(Integer a, Integer b) {
     static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
-        "Integral won't fit give number of bits");
+        "Integral won't fit given number of bits");
 
     using mask2 = detail::mask_for_add<Integer, Bits0, Bits...>;
 
@@ -201,16 +248,9 @@ constexpr Integer make_truncate(Integer value0,
     typename std::integral_constant<Integer, Bits>::value_type ...values)
 {
     static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
-        "Integral won't fit give number of bits");
+        "Integral won't fit given number of bits");
 
-    using integral_sum_vector = detail::prepend_seq<
-        detail::size_t_<0>,
-        detail::make_sum_vector_n<sizeof...(Bits), Bits0, Bits...> // (Bits0, Bits0 + Bits1, Bits0 + Bits1 + Bits2, ...)
-    >;
-
-    using offset_and_mask = detail::zip<integral_sum_vector,
-        detail::integer_seq<Bits0, Bits...>>;
-
+    using offset_and_mask = detail::offset_and_mask_vector<Bits0, Bits...>;
     return detail::make_truncated_int<Integer>(offset_and_mask(), value0, values...);
 }
 

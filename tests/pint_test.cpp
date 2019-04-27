@@ -84,3 +84,13 @@ TEST(TestAddUnsignedSaturate, EqualLength_WithOverflow_1BitPacks) {
 
     ASSERT_EQ(expected_sum, (pint::add_unsigned_saturate<1,1,1>(a, b)));
 }
+
+TEST(TestAddUnsignedSaturate, VarLength_WithOverflow) {
+    constexpr auto a = pint::make_truncate<uint16_t, 3, 4, 3>(1, 2, 3);
+    constexpr auto b = pint::make_truncate<uint16_t, 3, 4, 3>(7, 4, 6);
+
+    // 1 + 7 == 8 saturates to 7, 3 + 6 == 9 saturates to 7
+    constexpr auto expected_sum = pint::make_truncate<uint16_t, 3, 4, 3>(7,6,7);
+
+    ASSERT_EQ(expected_sum, (pint::add_unsigned_saturate<3,4,3>(a, b)));
+}
