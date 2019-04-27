@@ -56,28 +56,37 @@ struct zip_impl<seq<Types0...>, seq<Types1...>> {
 template<class Seq0, class Seq1>
 using zip = typename zip_impl<Seq0, Seq1>::type;
 
+// Check if all elements in sequence are the same
+template<class Seq> struct all_same;
+
+template<> struct all_same<seq<>> : std::true_type {};
+template<class First, class ...Others>
+struct all_same<seq<First, Others...>> :
+    std::is_same<seq<First, First, Others...>, seq<First, Others..., First>>::type
+{};
+
 // Defines type which is equal to integer_seq<Bits0, Bits0 + Bits1, Bits0 + Bits1 + Bits2, ...>
 // Max is the maximum number of elements to process. Length of resulting vector is min(Max, sizeof...(Bits))
-template<size_t Max, size_t ...Bits> struct make_sum_vector_impl;
+template<size_t Max, size_t Sum, size_t ...Bits> struct make_sum_vector_impl;
 
-template<size_t Max, size_t Bits0, size_t ...Bits>
-struct make_sum_vector_impl<Max, Bits0, Bits...> {
-    using type = prepend_seq<size_t_<Bits0>,
-        typename make_sum_vector_impl<Max - 1, (Bits0 + Bits)...>::type
+template<size_t Max, size_t Sum, size_t Bits0, size_t ...Bits>
+struct make_sum_vector_impl<Max, Sum, Bits0, Bits...> {
+    using type = prepend_seq<size_t_<Sum + Bits0>,
+        typename make_sum_vector_impl<Max - 1, Sum + Bits0, Bits...>::type
     >;
 };
-template<size_t Bits0, size_t ...Bits>
-struct make_sum_vector_impl<0, Bits0, Bits...> {
+template<size_t Sum, size_t Bits0, size_t ...Bits>
+struct make_sum_vector_impl<0, Sum, Bits0, Bits...> {
     using type = integer_seq<>;
 };
-template<>
-struct make_sum_vector_impl<0> {
+template<size_t Sum, size_t ...Bits>
+struct make_sum_vector_impl<0, Sum, Bits...> {
     using type = integer_seq<>;
 };
 template<size_t ...Bits>
-using make_sum_vector = typename make_sum_vector_impl<sizeof...(Bits), Bits...>::type;
+using make_sum_vector = typename make_sum_vector_impl<sizeof...(Bits), 0, Bits...>::type;
 template<size_t N, size_t ...Bits>
-using make_sum_vector_n = typename make_sum_vector_impl<N, Bits...>::type;
+using make_sum_vector_n = typename make_sum_vector_impl<N, 0, Bits...>::type;
 
 // Sum of given bits
 template<size_t ...Bits> struct sum;
@@ -152,6 +161,13 @@ constexpr Integer make_truncated_int(seq<MasksAndOffsets...>, Integer value0, Va
 }
 #endif
 
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr Integer add_unsigned_saturate(
+    Integer sum, Integer carrys, std::true_type /* all bits are the same */)
+{
+    return sum | ((carrys << 1) - (carrys >> (Bits0 - 1)));
+}
+
 } // namespace detail
 
 template<size_t Bits0, size_t ...Bits, class Integer>
@@ -167,10 +183,26 @@ constexpr Integer add_wrap(Integer a, Integer b) {
         ((a ^ b) & mask2::value);
 }
 
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr Integer add_unsigned_saturate(Integer a, Integer b) {
+    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
+        "Integral won't fit give number of bits");
+
+    using mask2 = detail::mask_for_add<Integer, Bits0, Bits...>;
+
+    return detail::add_unsigned_saturate<Bits0, Bits...>(
+        add_wrap<Bits0, Bits...>(a, b), // potentially overflown result
+        static_cast<Integer>(((a & b) | ((a | b) & ~(a + b))) & mask2::value), // carry vector
+        detail::all_same<detail::integer_seq<Bits0, Bits...>>());
+}
+
 template<class Integer, size_t Bits0, size_t ...Bits>
 constexpr Integer make_truncate(Integer value0,
     typename std::integral_constant<Integer, Bits>::value_type ...values)
 {
+    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
+        "Integral won't fit give number of bits");
+
     using integral_sum_vector = detail::prepend_seq<
         detail::size_t_<0>,
         detail::make_sum_vector_n<sizeof...(Bits), Bits0, Bits...> // (Bits0, Bits0 + Bits1, Bits0 + Bits1 + Bits2, ...)
