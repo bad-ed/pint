@@ -151,11 +151,11 @@ using mask_offsets_vector = prepend_seq<
 template<size_t... Bits>
 using offset_and_mask_vector = zip<
     mask_offsets_vector<Bits...>,
-    integer_seq<Bits...>
+    zip<integer_seq<Bits...>, integer_seq<Bits...>>
 >;
-template<class Integer, class OffsetAndMask>
+template<class Integer, class OffsetAndMask, template <class> class mask_getter>
 using shifted_mask = std::integral_constant<Integer, (
-    all_ones<Integer, take_2nd<OffsetAndMask>::value>::value <<
+    all_ones<Integer, mask_getter<take_2nd<OffsetAndMask>>::value>::value <<
         take_1st<OffsetAndMask>::value
 )>;
 
@@ -163,7 +163,7 @@ using shifted_mask = std::integral_constant<Integer, (
 template<class Integer, class ...Values, class ...MasksAndOffsets>
 constexpr Integer make_truncated_int(seq<MasksAndOffsets...>, Values ...values)
 {
-    return (... | ((values & all_ones<Integer, take_2nd<MasksAndOffsets>::value>::value) << take_1st<MasksAndOffsets>::value));
+    return (... | ((values & all_ones<Integer, take_1st<take_2nd<MasksAndOffsets>>::value>::value) << take_1st<MasksAndOffsets>::value));
 }
 #else
 template<class Integer> constexpr Integer make_truncated_int(seq<>) { return 0; }
@@ -172,7 +172,7 @@ constexpr Integer make_truncated_int(seq<MasksAndOffsets...>, Integer value0, Va
 {
     using my_mask_and_offset = take_1st<seq<MasksAndOffsets...>>;
 
-    return ((value0 & all_ones<Integer, take_2nd<my_mask_and_offset>::value>::value) <<
+    return ((value0 & all_ones<Integer, take_1st<take_2nd<my_mask_and_offset>>::value>::value) <<
             take_1st<my_mask_and_offset>::value)
         | make_truncated_int<Integer>(pop_front<seq<MasksAndOffsets...>>(), values...);
 }
@@ -190,7 +190,9 @@ constexpr Integer add_unsigned_saturate(
 template<class ...OffsetAndMasks, class Integer>
 constexpr Integer add_unsigned_saturate2(Integer carrys, seq<OffsetAndMasks...>) {
     return (... |
-        (carrys & shifted_mask<Integer, OffsetAndMasks>::value ? shifted_mask<Integer, OffsetAndMasks>::value : 0));
+        (carrys & shifted_mask<Integer, OffsetAndMasks, take_1st>::value
+            ? shifted_mask<Integer, OffsetAndMasks, take_2nd>::value
+            : 0));
 }
 #else
 template<class Integer>
@@ -204,7 +206,7 @@ constexpr Integer add_unsigned_saturate2(
 {
     using offset_and_mask = take_1st<seq<OffsetAndMasks...>>;
 
-    return (carrys & shifted_mask<Integer, offset_and_mask>::value ? shifted_mask<Integer, offset_and_mask>::value : 0) |
+    return (carrys & shifted_mask<Integer, offset_and_mask, take_1st>::value ? shifted_mask<Integer, offset_and_mask, take_2nd>::value : 0) |
         add_unsigned_saturate2(carrys, pop_front<seq<OffsetAndMasks...>>());
 }
 #endif
@@ -224,24 +226,55 @@ Integer signed_payload_bits_from_overflow(Integer overflow)
 }
 
 template<size_t Bits0, class Integer>
-constexpr Integer add_signed_saturate_same_length2(Integer sum, Integer overflow)
+constexpr Integer add_signed_saturate_same_length(Integer sum, Integer overflow)
 {
     return sum ^ signed_payload_bits_from_overflow<Bits0>(sum & overflow);
 }
 
-template<size_t Bits0, class Integer>
-constexpr Integer add_signed_saturate_same_length(Integer sum, Integer overflow)
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr Integer add_signed_saturate(
+    Integer sum, Integer overflow, std::true_type /* packs of same length */)
 {
-    return add_signed_saturate_same_length2<Bits0>(static_cast<Integer>(
+    return add_signed_saturate_same_length<Bits0>(static_cast<Integer>(
         (sum ^ overflow) | signed_payload_bits_from_overflow<Bits0>(overflow)), overflow);
+}
+
+template<class Integer, class MasksAndOffsets>
+constexpr Integer add_signed_saturate_var_len2(Integer sum, Integer overflow, MasksAndOffsets masks_and_offsets)
+{
+    return sum ^ add_unsigned_saturate2(overflow & sum, masks_and_offsets);
+}
+
+template<size_t ...Bits, class Integer>
+constexpr Integer add_signed_saturate_var_len(Integer sum, Integer overflow)
+{
+    using masks_and_offsets = zip<
+        mask_offsets_vector<Bits...>,
+        zip<integer_seq<Bits...>, integer_seq<(Bits-1)...>>
+    >;
+
+    return add_signed_saturate_var_len2<Integer>(
+        (sum ^ overflow) | add_unsigned_saturate2(overflow, masks_and_offsets()),
+        overflow,
+        masks_and_offsets());
 }
 
 template<size_t Bits0, size_t ...Bits, class Integer>
 constexpr Integer add_signed_saturate(
-    Integer a, Integer b, Integer sum, std::true_type /* packs of same length */)
+    Integer sum, Integer overflow, std::false_type /* packs of different lengths */)
+{
+    return add_signed_saturate_var_len<Bits0, Bits...>(sum, overflow);
+}
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr Integer add_signed_saturate(
+    Integer a, Integer b, Integer sum)
 {
     using mask2 = detail::mask_for_add<Integer, Bits0, Bits...>;
-    return add_signed_saturate_same_length<Bits0>(sum, static_cast<Integer>((~(a ^ b)) & (sum ^ b) & mask2::value));
+    return add_signed_saturate<Bits0, Bits...>(
+        sum,
+        static_cast<Integer>((~(a ^ b)) & (sum ^ b) & mask2::value),
+        detail::all_same<detail::integer_seq<Bits0, Bits...>>());
 }
 
 } // namespace detail
@@ -278,9 +311,7 @@ constexpr Integer add_signed_saturate(Integer a, Integer b) {
         "Integral won't fit given number of bits");
 
     return detail::add_signed_saturate<Bits0, Bits...>(
-        a, b,
-        add_wrap<Bits0, Bits...>(a, b),
-        detail::all_same<detail::integer_seq<Bits0, Bits...>>());
+        a, b, add_wrap<Bits0, Bits...>(a, b));
 }
 
 template<class Integer, size_t Bits0, size_t ...Bits>
