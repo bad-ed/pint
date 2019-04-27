@@ -47,6 +47,15 @@ TEST(TestAddWrap, WithOverflow2) {
     ASSERT_EQ(expected_sum, (pint::add_wrap<3,3,3>(a, b)));
 }
 
+TEST(TestAddWrap, WithOverflow_1BitPacks) {
+    constexpr auto a = pint::make_truncate<uint16_t, 1, 1, 1>(1, 0, 1);
+    constexpr auto b = pint::make_truncate<uint16_t, 1, 1, 1>(0, 0, 1);
+
+    constexpr auto expected_sum = pint::make_truncate<uint16_t, 1, 1, 1>(1,0,0);
+
+    ASSERT_EQ(expected_sum, (pint::add_wrap<1,1,1>(a, b)));
+}
+
 TEST(TestAddUnsignedSaturate, EqualLength_NoOverflow) {
     constexpr auto a = pint::make_truncate<uint16_t, 3, 3, 3>(1, 2, 3);
     constexpr auto b = pint::make_truncate<uint16_t, 3, 3, 3>(2, 3, 4);
@@ -65,4 +74,13 @@ TEST(TestAddUnsignedSaturate, EqualLength_WithOverflow) {
     constexpr auto expected_sum = pint::make_truncate<uint16_t, 3, 3, 3>(7,6,7);
 
     ASSERT_EQ(expected_sum, (pint::add_unsigned_saturate<3,3,3>(a, b)));
+}
+
+TEST(TestAddUnsignedSaturate, EqualLength_WithOverflow_1BitPacks) {
+    constexpr auto a = pint::make_truncate<uint16_t, 1, 1, 1>(1, 0, 1);
+    constexpr auto b = pint::make_truncate<uint16_t, 1, 1, 1>(0, 0, 1);
+
+    constexpr auto expected_sum = pint::make_truncate<uint16_t, 1, 1, 1>(1,0,1);
+
+    ASSERT_EQ(expected_sum, (pint::add_unsigned_saturate<1,1,1>(a, b)));
 }
