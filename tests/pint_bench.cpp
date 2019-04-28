@@ -215,6 +215,62 @@ uint32_t AddUnsignedSaturationUsingUnion(const TestVector &numbers) {
     return sum;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+uint32_t AddSignedSaturationUsingPint(const TestVector &numbers) {
+    uint32_t sum = 0;
+    for (auto &pair : numbers)
+        sum += pint::add_signed_saturate<1,2,3,4,5,6,11>(pair.first, pair.second);
+
+    return sum;
+}
+
+template<size_t bits>
+int32_t clamp(int32_t value) {
+    static const int32_t kMinv = static_cast<uint32_t>(~0) << (bits - 1);
+    static const int32_t kMaxv = (1 << (bits - 1)) - 1;
+
+    if (value < kMinv) return kMinv;
+    if (value > kMaxv) return kMaxv;
+    return value;
+}
+
+uint32_t AddSignedSaturationUsingUnion(const TestVector &numbers) {
+    union SumUnion {
+        struct {
+            int32_t a: 1;
+            int32_t b: 2;
+            int32_t c: 3;
+            int32_t d: 4;
+            int32_t e: 5;
+            int32_t f: 6;
+            int32_t g: 11;
+        };
+
+        uint32_t value;
+    };
+
+    uint32_t sum = 0;
+    for (auto &pair : numbers) {
+        SumUnion a,b,c;
+
+        a.value = pair.first;
+        b.value = pair.second;
+
+        c.a = clamp<1>(a.a + b.a);
+        c.b = clamp<2>(a.b + b.b);
+        c.c = clamp<3>(a.c + b.c);
+        c.d = clamp<4>(a.d + b.d);
+        c.e = clamp<5>(a.e + b.e);
+        c.f = clamp<6>(a.f + b.f);
+        c.g = clamp<11>(a.g + b.g);
+
+        sum += c.value;
+    }
+
+    return sum;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 int main() {
@@ -222,19 +278,23 @@ int main() {
         uint32_t (* volatile bench_func)(const TestVector &);
         const char *bench_descr;
     } static const kTests[] = {
+        { Baseline,                "warmup            " },
         { Baseline,                "baseline          " },
-        { AddWrapUsingPint,        "pint    /add/wrap " },
-        { AddWrapUsingUnion,       "union   /add/wrap " },
+        { AddWrapUsingPint,        "pint    |add|wrap " },
+        { AddWrapUsingUnion,       "union   |add|wrap " },
 
-        { AddUnsignedSaturationUsingPint, "pint    /add/sat/u" },
-        { AddUnsignedSaturationUsingUnion,"union   /add/sat/u" },
+        { AddUnsignedSaturationUsingPint, "pint    |add|sat/u" },
+        { AddUnsignedSaturationUsingUnion,"union   |add|sat/u" },
 
-        { SubWrapUsingPint,        "pint    /sub/wrap " },
-        { SubWrapUsingUnion,       "union   /sub/wrap " },
+        { AddSignedSaturationUsingPint, "pint    |add|sat/s" },
+        { AddSignedSaturationUsingUnion,"union   |add|sat/s" },
+
+        { SubWrapUsingPint,        "pint    |sub|wrap " },
+        { SubWrapUsingUnion,       "union   |sub|wrap " },
     };
 
     std::cout << "Generating random pairs\n";
-    auto random_pairs = GetRandomPairs(10'000'000);
+    auto random_pairs = GetRandomPairs(100'000'000);
 
     for (auto &bench_info : kTests)
     {
