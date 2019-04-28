@@ -3,7 +3,7 @@
 
 TEST(TestMakeTruncate, InputWithoutOverflow)
 {
-    using PackedInt = pint::packed_int<uint16_t, 5, 6, 5>;
+    using PackedInt = pint::make_packed_int<5, 6, 5>;
 
     constexpr auto result = PackedInt(1, 20, 10);
     constexpr uint16_t expected_result = 1 | (20 << 5) | (10 << 11);
@@ -13,7 +13,7 @@ TEST(TestMakeTruncate, InputWithoutOverflow)
 
 TEST(TestMakeTruncate, InputWithOverflow)
 {
-    using PackedInt = pint::packed_int<uint16_t, 5, 6, 5>;
+    using PackedInt = pint::make_packed_int<5, 6, 5>;
 
     constexpr auto result = PackedInt(33, 66, 234);
     constexpr uint16_t expected_result = (33 & 0x1F) | ((66 & 0x3F) << 5) | ((234 & 0x1F) << 11);
@@ -22,7 +22,7 @@ TEST(TestMakeTruncate, InputWithOverflow)
 }
 
 TEST(TestAddWrap, NoOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 5, 6, 5>;
+    using PackedInt = pint::make_packed_int<5, 6, 5>;
 
     constexpr auto a = PackedInt(1, 20, 10);
     constexpr auto b = PackedInt(3, 2, 1);
@@ -33,7 +33,7 @@ TEST(TestAddWrap, NoOverflow) {
 }
 
 TEST(TestAddWrap, WithOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 5, 6, 5>;
+    using PackedInt = pint::make_packed_int<5, 6, 5>;
 
     constexpr auto a = PackedInt(1, 60, 10);
     constexpr auto b = PackedInt(31, 20, 27);
@@ -44,7 +44,7 @@ TEST(TestAddWrap, WithOverflow) {
 }
 
 TEST(TestAddWrap, WithOverflow2) {
-    using PackedInt = pint::packed_int<uint16_t, 3, 3, 3>;
+    using PackedInt = pint::make_packed_int<3, 3, 3>;
 
     constexpr auto a = PackedInt(3, 4, 5);
     constexpr auto b = PackedInt(5, 6, 7);
@@ -55,7 +55,7 @@ TEST(TestAddWrap, WithOverflow2) {
 }
 
 TEST(TestAddWrap, WithOverflow_1BitPacks) {
-    using PackedInt = pint::packed_int<uint16_t, 1, 1, 1>;
+    using PackedInt = pint::make_packed_int<1, 1, 1>;
 
     constexpr auto a = PackedInt(1, 0, 1);
     constexpr auto b = PackedInt(0, 0, 1);
@@ -66,7 +66,7 @@ TEST(TestAddWrap, WithOverflow_1BitPacks) {
 }
 
 TEST(TestAddUnsignedSaturate, EqualLength_NoOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 3, 3, 3>;
+    using PackedInt = pint::make_packed_int<3, 3, 3>;
 
     constexpr auto a = PackedInt(1, 2, 3);
     constexpr auto b = PackedInt(2, 3, 4);
@@ -77,7 +77,7 @@ TEST(TestAddUnsignedSaturate, EqualLength_NoOverflow) {
 }
 
 TEST(TestAddUnsignedSaturate, EqualLength_WithOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 3, 3, 3>;
+    using PackedInt = pint::make_packed_int<3, 3, 3>;
 
     constexpr auto a = PackedInt(1, 2, 3);
     constexpr auto b = PackedInt(7, 4, 6);
@@ -89,7 +89,7 @@ TEST(TestAddUnsignedSaturate, EqualLength_WithOverflow) {
 }
 
 TEST(TestAddUnsignedSaturate, EqualLength_WithOverflow_1BitPacks) {
-    using PackedInt = pint::packed_int<uint16_t, 1, 1, 1>;
+    using PackedInt = pint::make_packed_int<1, 1, 1>;
 
     constexpr auto a = PackedInt(1, 0, 1);
     constexpr auto b = PackedInt(0, 0, 1);
@@ -100,7 +100,7 @@ TEST(TestAddUnsignedSaturate, EqualLength_WithOverflow_1BitPacks) {
 }
 
 TEST(TestAddUnsignedSaturate, VarLength_WithOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 3, 4, 3>;
+    using PackedInt = pint::make_packed_int<3, 4, 3>;
 
     constexpr auto a = PackedInt(1, 2, 3);
     constexpr auto b = PackedInt(7, 4, 6);
@@ -114,7 +114,7 @@ TEST(TestAddUnsignedSaturate, VarLength_WithOverflow) {
 //////////////////////////////////////////////////////////////////////////////
 
 TEST(TestAddSignedSaturate, EqualLength_Positive_NoOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 4, 4, 4>;
+    using PackedInt = pint::make_packed_int<4, 4, 4>;
 
     constexpr auto a = PackedInt(1, 2, 3);
     constexpr auto b = PackedInt(2, 3, 4);
@@ -125,7 +125,7 @@ TEST(TestAddSignedSaturate, EqualLength_Positive_NoOverflow) {
 }
 
 TEST(TestAddSignedSaturate, EqualLength_Negative_NoOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 4, 4, 4>;
+    using PackedInt = pint::make_packed_int<4, 4, 4>;
 
     constexpr auto a = PackedInt(-1, -2, -3);
     constexpr auto b = PackedInt(-2, -3, -4);
@@ -136,7 +136,7 @@ TEST(TestAddSignedSaturate, EqualLength_Negative_NoOverflow) {
 }
 
 TEST(TestAddSignedSaturate, EqualLength_PositiveNegative_NoOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 4, 4, 4>;
+    using PackedInt = pint::make_packed_int<4, 4, 4>;
 
     constexpr auto a = PackedInt(1, -2, 3);
     constexpr auto b = PackedInt(-2, 3, -4);
@@ -147,7 +147,7 @@ TEST(TestAddSignedSaturate, EqualLength_PositiveNegative_NoOverflow) {
 }
 
 TEST(TestAddSignedSaturate, EqualLength_Positive_Overflow) {
-    using PackedInt = pint::packed_int<uint16_t, 4, 4, 4>;
+    using PackedInt = pint::make_packed_int<4, 4, 4>;
 
     constexpr auto a = PackedInt(1, 2, 3);
     constexpr auto b = PackedInt(7, 4, 6);
@@ -158,7 +158,7 @@ TEST(TestAddSignedSaturate, EqualLength_Positive_Overflow) {
 }
 
 TEST(TestAddSignedSaturate, EqualLength_Negative_Overflow) {
-    using PackedInt = pint::packed_int<uint16_t, 4, 4, 4>;
+    using PackedInt = pint::make_packed_int<4, 4, 4>;
 
     constexpr auto a = PackedInt(-1, -2, -3);
     constexpr auto b = PackedInt(-8, -4, -6);
@@ -171,7 +171,7 @@ TEST(TestAddSignedSaturate, EqualLength_Negative_Overflow) {
 //////////////////////////////////////////////////////////////////////////////
 
 TEST(TestAddSignedSaturate, VarLength_Positive_NoOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 4, 5, 4>;
+    using PackedInt = pint::make_packed_int<4, 5, 4>;
 
     constexpr auto a = PackedInt(1, 2, 3);
     constexpr auto b = PackedInt(2, 3, 4);
@@ -182,7 +182,7 @@ TEST(TestAddSignedSaturate, VarLength_Positive_NoOverflow) {
 }
 
 TEST(TestAddSignedSaturate, VarLength_Negative_NoOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 4, 5, 4>;
+    using PackedInt = pint::make_packed_int<4, 5, 4>;
 
     constexpr auto a = PackedInt(-1, -2, -3);
     constexpr auto b = PackedInt(-2, -3, -4);
@@ -193,7 +193,7 @@ TEST(TestAddSignedSaturate, VarLength_Negative_NoOverflow) {
 }
 
 TEST(TestAddSignedSaturate, VarLength_PositiveNegative_NoOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 4, 5, 4>;
+    using PackedInt = pint::make_packed_int<4, 5, 4>;
 
     constexpr auto a = PackedInt(1, -2, 3);
     constexpr auto b = PackedInt(-2, 3, -4);
@@ -204,7 +204,7 @@ TEST(TestAddSignedSaturate, VarLength_PositiveNegative_NoOverflow) {
 }
 
 TEST(TestAddSignedSaturate, VarLength_Positive_Overflow) {
-    using PackedInt = pint::packed_int<uint16_t, 4, 5, 4>;
+    using PackedInt = pint::make_packed_int<4, 5, 4>;
 
     constexpr auto a = PackedInt(1, 10, 3);
     constexpr auto b = PackedInt(7, 14, 6);
@@ -215,7 +215,7 @@ TEST(TestAddSignedSaturate, VarLength_Positive_Overflow) {
 }
 
 TEST(TestAddSignedSaturate, VarLength_Negative_Overflow) {
-    using PackedInt = pint::packed_int<uint16_t, 4, 5, 4>;
+    using PackedInt = pint::make_packed_int<4, 5, 4>;
 
     constexpr auto a = PackedInt(-1, -12, -3);
     constexpr auto b = PackedInt(-8, -14, -6);
@@ -228,7 +228,7 @@ TEST(TestAddSignedSaturate, VarLength_Negative_Overflow) {
 //////////////////////////////////////////////////////////////////////////////
 
 TEST(TestSubWrap, NoOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 5, 6, 5>;
+    using PackedInt = pint::make_packed_int<5, 6, 5>;
 
     constexpr auto a = PackedInt(4, 20, 10);
     constexpr auto b = PackedInt(3, 2, 1);
@@ -239,7 +239,7 @@ TEST(TestSubWrap, NoOverflow) {
 }
 
 TEST(TestSubWrap, NoOverflow2) {
-    using PackedInt = pint::packed_int<uint16_t, 3, 3, 3>;
+    using PackedInt = pint::make_packed_int<3, 3, 3>;
 
     constexpr auto a = PackedInt(7, 6, 5);
     constexpr auto b = PackedInt(1, 2, 3);
@@ -250,7 +250,7 @@ TEST(TestSubWrap, NoOverflow2) {
 }
 
 TEST(TestSubWrap, NoOverflow_1BitPacks) {
-    using PackedInt = pint::packed_int<uint16_t, 1, 1, 1>;
+    using PackedInt = pint::make_packed_int<1, 1, 1>;
 
     constexpr auto a = PackedInt(1, 1, 0);
     constexpr auto b = PackedInt(1, 0, 0);
@@ -261,7 +261,7 @@ TEST(TestSubWrap, NoOverflow_1BitPacks) {
 }
 
 TEST(TestSubWrap, WithOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 3, 3, 3>;
+    using PackedInt = pint::make_packed_int<3, 3, 3>;
 
     constexpr auto a = PackedInt(1, 4, 2);
     constexpr auto b = PackedInt(7, 2, 6);
@@ -272,7 +272,7 @@ TEST(TestSubWrap, WithOverflow) {
 }
 
 TEST(TestSubWrap, WithOverflow_1BitPacks) {
-    using PackedInt = pint::packed_int<uint16_t, 1, 1, 1>;
+    using PackedInt = pint::make_packed_int<1, 1, 1>;
 
     constexpr auto a = PackedInt(1, 0, 0);
     constexpr auto b = PackedInt(1, 1, 0);
@@ -285,7 +285,7 @@ TEST(TestSubWrap, WithOverflow_1BitPacks) {
 //////////////////////////////////////////////////////////////////////////////
 
 TEST(TestSubUnsignedSaturate, NoOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 5, 6, 5>;
+    using PackedInt = pint::make_packed_int<5, 6, 5>;
 
     constexpr auto a = PackedInt(4, 20, 10);
     constexpr auto b = PackedInt(3, 2, 1);
@@ -296,7 +296,7 @@ TEST(TestSubUnsignedSaturate, NoOverflow) {
 }
 
 TEST(TestSubUnsignedSaturate, WithOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 5, 6, 5>;
+    using PackedInt = pint::make_packed_int<5, 6, 5>;
 
     constexpr auto a = PackedInt(4, 2, 1);
     constexpr auto b = PackedInt(3, 20, 10);
@@ -307,7 +307,7 @@ TEST(TestSubUnsignedSaturate, WithOverflow) {
 }
 
 TEST(TestSubUnsignedSaturate, WithOverflow_1BitPacks) {
-    using PackedInt = pint::packed_int<uint16_t, 1, 1, 1>;
+    using PackedInt = pint::make_packed_int<1, 1, 1>;
 
     constexpr auto a = PackedInt(1, 0, 0);
     constexpr auto b = PackedInt(1, 1, 0);
@@ -320,7 +320,7 @@ TEST(TestSubUnsignedSaturate, WithOverflow_1BitPacks) {
 //////////////////////////////////////////////////////////////////////////////
 
 TEST(TestSubSignedSaturate, Positive_NoOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 5, 6, 5>;
+    using PackedInt = pint::make_packed_int<5, 6, 5>;
 
     constexpr auto a = PackedInt(4, 20, 10);
     constexpr auto b = PackedInt(3, 2, 1);
@@ -331,7 +331,7 @@ TEST(TestSubSignedSaturate, Positive_NoOverflow) {
 }
 
 TEST(TestSubSignedSaturate, Negative_NoOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 5, 6, 5>;
+    using PackedInt = pint::make_packed_int<5, 6, 5>;
 
     constexpr auto a = PackedInt(-4, -20, -10);
     constexpr auto b = PackedInt(-3, -2, -1);
@@ -342,7 +342,7 @@ TEST(TestSubSignedSaturate, Negative_NoOverflow) {
 }
 
 TEST(TestSubSignedSaturate, PositiveNegativeOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 4, 6, 4>;
+    using PackedInt = pint::make_packed_int<4, 6, 4>;
 
     constexpr auto a = PackedInt(4, 0, 7);
     constexpr auto b = PackedInt(-6, -32, 1);
@@ -353,7 +353,7 @@ TEST(TestSubSignedSaturate, PositiveNegativeOverflow) {
 }
 
 TEST(TestSubSignedSaturate, NegativePositiveOverflow) {
-    using PackedInt = pint::packed_int<uint16_t, 4, 6, 4>;
+    using PackedInt = pint::make_packed_int<4, 6, 4>;
 
     constexpr auto a = PackedInt(-4, -2, -6);
     constexpr auto b = PackedInt(6, 30, 1);

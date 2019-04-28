@@ -335,12 +335,23 @@ static constexpr Integer make_truncate(Integer value0,
     return detail::make_truncated_int<Integer>(offset_and_mask(), value0, values...);
 }
 
+template<size_t RequiredBits> struct find_appropriate_int;
+template<> struct find_appropriate_int<8> { using type = uint8_t; };
+template<> struct find_appropriate_int<16> { using type = uint16_t; };
+template<> struct find_appropriate_int<32> { using type = uint32_t; };
+template<> struct find_appropriate_int<64> { using type = uint64_t; };
+
 } // namespace detail
 
 template<class Integer, size_t Bits0, size_t ...Bits>
 class packed_int {
 public:
-    using value_type = typename std::make_unsigned<Integer>::type;
+    static_assert(std::is_integral<Integer>::value && std::is_unsigned<Integer>::value,
+        "Integer must be unsigned integer");
+    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
+        "Integer won't fit given number of bits");
+
+    using value_type = Integer;
 
     constexpr explicit packed_int(value_type value) noexcept : m_value(value) {}
 
@@ -356,14 +367,19 @@ private:
     value_type m_value;
 };
 
+template<size_t Bits0, size_t ...Bits>
+using make_packed_int = packed_int<
+    typename detail::find_appropriate_int<
+        (detail::sum<Bits0, Bits...>::value + 7) & ~7
+    >::type,
+    Bits0, Bits...
+>;
+
 template<size_t Bits0, size_t ...Bits, class Integer>
 constexpr packed_int<Integer, Bits0, Bits...> add_wrap(
     packed_int<Integer, Bits0, Bits...> a,
     packed_int<Integer, Bits0, Bits...> b) noexcept
 {
-    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
-        "Integral won't fit given number of bits");
-
     using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
     using mask1 = std::integral_constant<Integer, (~mask2::value)
         & detail::all_ones<Integer, detail::sum<Bits0, Bits...>::value>::value>;
@@ -378,9 +394,6 @@ constexpr packed_int<Integer, Bits0, Bits...> add_unsigned_saturate(
     packed_int<Integer, Bits0, Bits...> a,
     packed_int<Integer, Bits0, Bits...> b) noexcept
 {
-    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
-        "Integral won't fit given number of bits");
-
     using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
 
     return packed_int<Integer, Bits0, Bits...>(
@@ -396,9 +409,6 @@ constexpr packed_int<Integer, Bits0, Bits...> add_signed_saturate(
     packed_int<Integer, Bits0, Bits...> a,
     packed_int<Integer, Bits0, Bits...> b) noexcept
 {
-    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
-        "Integral won't fit given number of bits");
-
     return packed_int<Integer, Bits0, Bits...>(
         detail::add_signed_saturate<Bits0, Bits...>(
             a.value(), b.value(), add_wrap(a, b).value())
@@ -412,9 +422,6 @@ constexpr packed_int<Integer, Bits0, Bits...> sub_wrap(
     packed_int<Integer, Bits0, Bits...> a,
     packed_int<Integer, Bits0, Bits...> b) noexcept
 {
-    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
-        "Integral won't fit given number of bits");
-
     using mask3 = detail::mask_loorder<Integer, Bits0, Bits...>;
     using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
     using mask1 = std::integral_constant<Integer, (~mask2::value)
@@ -431,9 +438,6 @@ constexpr packed_int<Integer, Bits0, Bits...> sub_unsigned_saturate(
     packed_int<Integer, Bits0, Bits...> a,
     packed_int<Integer, Bits0, Bits...> b) noexcept
 {
-    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
-        "Integral won't fit given number of bits");
-
     using packed = packed_int<Integer, Bits0, Bits...>;
     using mask3 = detail::mask_loorder<Integer, Bits0, Bits...>;
     using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
@@ -453,9 +457,6 @@ constexpr packed_int<Integer, Bits0, Bits...> sub_signed_saturate(
     packed_int<Integer, Bits0, Bits...> a,
     packed_int<Integer, Bits0, Bits...> b) noexcept
 {
-    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
-        "Integral won't fit given number of bits");
-
     return packed_int<Integer, Bits0, Bits...>(
         detail::sub_signed_saturate<Bits0, Bits...>(
             a.value(), b.value(), sub_wrap(a, b).value())
