@@ -217,14 +217,6 @@ uint32_t AddUnsignedSaturationUsingUnion(const TestVector &numbers) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-uint32_t AddSignedSaturationUsingPint(const TestVector &numbers) {
-    uint32_t sum = 0;
-    for (auto &pair : numbers)
-        sum += pint::add_signed_saturate<1,2,3,4,5,6,11>(pair.first, pair.second);
-
-    return sum;
-}
-
 template<size_t bits>
 int32_t clamp(int32_t value) {
     static const int32_t kMinv = static_cast<uint32_t>(~0) << (bits - 1);
@@ -233,6 +225,14 @@ int32_t clamp(int32_t value) {
     if (value < kMinv) return kMinv;
     if (value > kMaxv) return kMaxv;
     return value;
+}
+
+uint32_t AddSignedSaturationUsingPint(const TestVector &numbers) {
+    uint32_t sum = 0;
+    for (auto &pair : numbers)
+        sum += pint::add_signed_saturate<1,2,3,4,5,6,11>(pair.first, pair.second);
+
+    return sum;
 }
 
 uint32_t AddSignedSaturationUsingUnion(const TestVector &numbers) {
@@ -271,6 +271,54 @@ uint32_t AddSignedSaturationUsingUnion(const TestVector &numbers) {
     return sum;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+uint32_t AddSignedSaturationUsingPint2(const TestVector &numbers) {
+    uint32_t sum = 0;
+    for (auto &pair : numbers)
+        sum += pint::add_signed_saturate<4,4,4,4,4,4,4,4>(pair.first, pair.second);
+
+    return sum;
+}
+
+uint32_t AddSignedSaturationUsingUnion2(const TestVector &numbers) {
+    union SumUnion {
+        struct {
+            int32_t a: 4;
+            int32_t b: 4;
+            int32_t c: 4;
+            int32_t d: 4;
+            int32_t e: 4;
+            int32_t f: 4;
+            int32_t g: 4;
+            int32_t h: 4;
+        };
+
+        uint32_t value;
+    };
+
+    uint32_t sum = 0;
+    for (auto &pair : numbers) {
+        SumUnion a,b,c;
+
+        a.value = pair.first;
+        b.value = pair.second;
+
+        c.a = clamp<4>(a.a + b.a);
+        c.b = clamp<4>(a.b + b.b);
+        c.c = clamp<4>(a.c + b.c);
+        c.d = clamp<4>(a.d + b.d);
+        c.e = clamp<4>(a.e + b.e);
+        c.f = clamp<4>(a.f + b.f);
+        c.g = clamp<4>(a.g + b.g);
+        c.h = clamp<4>(a.h + b.h);
+
+        sum += c.value;
+    }
+
+    return sum;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 int main() {
@@ -288,6 +336,9 @@ int main() {
 
         { AddSignedSaturationUsingPint, "pint    |add|sat/s" },
         { AddSignedSaturationUsingUnion,"union   |add|sat/s" },
+
+        { AddSignedSaturationUsingPint2, "pint/eq |add|sat/s" },
+        { AddSignedSaturationUsingUnion2,"union/eq|add|sat/s" },
 
         { SubWrapUsingPint,        "pint    |sub|wrap " },
         { SubWrapUsingUnion,       "union   |sub|wrap " },
