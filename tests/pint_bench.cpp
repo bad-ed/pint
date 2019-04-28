@@ -45,9 +45,11 @@ uint32_t Baseline(const TestVector &numbers) {
 ////////////////////////////////////////////////////////////////////////////////
 
 uint32_t AddWrapUsingPint(const TestVector &numbers) {
+    using PackedInt = pint::packed_int<uint32_t,1,2,3,4,5,6,11>;
+
     uint32_t sum = 0;
     for (auto &pair : numbers)
-        sum += pint::add_wrap<1,2,3,4,5,6,11>(pair.first, pair.second);
+        sum += pint::add_wrap(PackedInt(pair.first), PackedInt(pair.second)).value();
 
     return sum;
 }
@@ -111,9 +113,11 @@ uint32_t AddWrapUsingUnion(const TestVector &numbers) {
 ////////////////////////////////////////////////////////////////////////////////
 
 uint32_t SubWrapUsingPint(const TestVector &numbers) {
+    using PackedInt = pint::packed_int<uint32_t,1,2,3,4,5,6,11>;
+
     uint32_t sum = 0;
     for (auto &pair : numbers)
-        sum += pint::sub_wrap<1,2,3,4,5,6,11>(pair.first, pair.second);
+        sum += pint::sub_wrap(PackedInt(pair.first), PackedInt(pair.second)).value();
 
     return sum;
 }
@@ -157,9 +161,11 @@ uint32_t SubWrapUsingUnion(const TestVector &numbers) {
 ////////////////////////////////////////////////////////////////////////////////
 
 uint32_t AddUnsignedSaturationUsingPint(const TestVector &numbers) {
+    using PackedInt = pint::packed_int<uint32_t,1,2,3,4,5,6,11>;
+
     uint32_t sum = 0;
     for (auto &pair : numbers)
-        sum += pint::add_unsigned_saturate<1,2,3,4,5,6,11>(pair.first, pair.second);
+        sum += pint::add_unsigned_saturate(PackedInt(pair.first), PackedInt(pair.second)).value();
 
     return sum;
 }
@@ -226,9 +232,11 @@ int32_t clamp(int32_t value) {
 }
 
 uint32_t AddSignedSaturationUsingPint(const TestVector &numbers) {
+    using PackedInt = pint::packed_int<uint32_t,1,2,3,4,5,6,11>;
+
     uint32_t sum = 0;
     for (auto &pair : numbers)
-        sum += pint::add_signed_saturate<1,2,3,4,5,6,11>(pair.first, pair.second);
+        sum += pint::add_signed_saturate(PackedInt(pair.first), PackedInt(pair.second)).value();
 
     return sum;
 }
@@ -272,9 +280,11 @@ uint32_t AddSignedSaturationUsingUnion(const TestVector &numbers) {
 ////////////////////////////////////////////////////////////////////////////////
 
 uint32_t AddSignedSaturationUsingPint2(const TestVector &numbers) {
+    using PackedInt = pint::packed_int<uint32_t,4,4,4,4,4,4,4,4>;
+
     uint32_t sum = 0;
     for (auto &pair : numbers)
-        sum += pint::add_signed_saturate<4,4,4,4,4,4,4,4>(pair.first, pair.second);
+        sum += pint::add_signed_saturate(PackedInt(pair.first), PackedInt(pair.second)).value();
 
     return sum;
 }

@@ -305,8 +305,7 @@ constexpr Integer apply_signed_saturation(
 }
 
 template<size_t Bits0, size_t ...Bits, class Integer>
-constexpr Integer add_signed_saturate(
-    Integer a, Integer b, Integer sum)
+constexpr Integer add_signed_saturate(Integer a, Integer b, Integer sum)
 {
     using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
     return apply_signed_saturation<Bits0, Bits...>(
@@ -316,8 +315,7 @@ constexpr Integer add_signed_saturate(
 }
 
 template<size_t Bits0, size_t ...Bits, class Integer>
-constexpr Integer sub_signed_saturate(
-    Integer a, Integer b, Integer diff)
+constexpr Integer sub_signed_saturate(Integer a, Integer b, Integer diff)
 {
     using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
     return apply_signed_saturation<Bits0, Bits...>(
@@ -326,97 +324,142 @@ constexpr Integer sub_signed_saturate(
         detail::all_same<detail::integer_seq<Bits0, Bits...>>());
 }
 
-} // namespace detail
-
-template<size_t Bits0, size_t ...Bits, class Integer>
-constexpr Integer add_wrap(Integer a, Integer b) {
-    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
-        "Integral won't fit given number of bits");
-
-    using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
-    using mask1 = std::integral_constant<Integer, (~mask2::value)
-        & detail::all_ones<Integer, detail::sum<Bits0, Bits...>::value>::value>;
-
-    return ((a & mask1::value) + (b & mask1::value)) ^
-        ((a ^ b) & mask2::value);
-}
-
-template<size_t Bits0, size_t ...Bits, class Integer>
-constexpr Integer add_unsigned_saturate(Integer a, Integer b) {
-    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
-        "Integral won't fit given number of bits");
-
-    using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
-
-    return detail::add_unsigned_saturate<Bits0, Bits...>(
-        add_wrap<Bits0, Bits...>(a, b), // potentially overflown result
-        static_cast<Integer>(detail::carry_add_vector(a, b) & mask2::value), // carry vector
-        detail::all_same<detail::integer_seq<Bits0, Bits...>>());
-}
-
-template<size_t Bits0, size_t ...Bits, class Integer>
-constexpr Integer add_signed_saturate(Integer a, Integer b) {
-    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
-        "Integral won't fit given number of bits");
-
-    return detail::add_signed_saturate<Bits0, Bits...>(
-        a, b, add_wrap<Bits0, Bits...>(a, b));
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
-template<size_t Bits0, size_t ...Bits, class Integer>
-constexpr Integer sub_wrap(Integer a, Integer b) {
-    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
-        "Integral won't fit given number of bits");
-
-    using mask3 = detail::mask_loorder<Integer, Bits0, Bits...>;
-    using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
-    using mask1 = std::integral_constant<Integer, (~mask2::value)
-        & detail::all_ones<Integer, detail::sum<Bits0, Bits...>::value>::value>;
-
-    return ((a & mask1::value) + (~b & mask1::value) + (mask3::value & mask1::value)) ^
-        ((a ^ ~b) & mask2::value) ^ (mask2::value & mask3::value);
-}
-
-template<size_t Bits0, size_t ...Bits, class Integer>
-constexpr Integer sub_unsigned_saturate(Integer a, Integer b) {
-    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
-        "Integral won't fit given number of bits");
-
-    using mask3 = detail::mask_loorder<Integer, Bits0, Bits...>;
-    using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
-
-    // a + ~b with saturation (using carry subtraction vector),
-    // then add mask with low order bits with overflow
-    return add_wrap<Bits0, Bits...>(
-        detail::add_unsigned_saturate<Bits0, Bits...>(
-            add_wrap<Bits0, Bits...>(a, static_cast<Integer>(~b)), // potentially overflown result
-            static_cast<Integer>(detail::carry_sub_vector(a, b) & mask2::value), // overflow vector
-            detail::all_same<detail::integer_seq<Bits0, Bits...>>()),
-        mask3::value);
-}
-
-template<size_t Bits0, size_t ...Bits, class Integer>
-constexpr Integer sub_signed_saturate(Integer a, Integer b) {
-    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
-        "Integral won't fit given number of bits");
-
-    return detail::sub_signed_saturate<Bits0, Bits...>(
-        a, b, sub_wrap<Bits0, Bits...>(a, b));
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
 template<class Integer, size_t Bits0, size_t ...Bits>
-constexpr Integer make_truncate(Integer value0,
-    typename std::integral_constant<Integer, Bits>::value_type ...values)
+static constexpr Integer make_truncate(Integer value0,
+    typename std::integral_constant<Integer, Bits>::value_type ...values) noexcept
 {
     static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
         "Integral won't fit given number of bits");
 
     using offset_and_mask = detail::offset_and_mask_vector<Bits0, Bits...>;
     return detail::make_truncated_int<Integer>(offset_and_mask(), value0, values...);
+}
+
+} // namespace detail
+
+template<class Integer, size_t Bits0, size_t ...Bits>
+class packed_int {
+public:
+    using value_type = typename std::make_unsigned<Integer>::type;
+
+    constexpr explicit packed_int(value_type value) noexcept : m_value(value) {}
+
+    template<size_t BitCount = sizeof...(Bits), typename std::enable_if<BitCount != 0, int>::type = 0>
+    constexpr packed_int(value_type value0,
+        typename std::integral_constant<value_type, Bits>::value_type ...values) noexcept
+        : m_value(detail::make_truncate<value_type, Bits0, Bits...>(value0, values...))
+    {}
+
+    constexpr value_type value() const { return m_value; }
+
+private:
+    value_type m_value;
+};
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr packed_int<Integer, Bits0, Bits...> add_wrap(
+    packed_int<Integer, Bits0, Bits...> a,
+    packed_int<Integer, Bits0, Bits...> b) noexcept
+{
+    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
+        "Integral won't fit given number of bits");
+
+    using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
+    using mask1 = std::integral_constant<Integer, (~mask2::value)
+        & detail::all_ones<Integer, detail::sum<Bits0, Bits...>::value>::value>;
+
+    return packed_int<Integer, Bits0, Bits...>(
+        ((a.value() & mask1::value) + (b.value() & mask1::value)) ^
+        ((a.value() ^ b.value()) & mask2::value));
+}
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr packed_int<Integer, Bits0, Bits...> add_unsigned_saturate(
+    packed_int<Integer, Bits0, Bits...> a,
+    packed_int<Integer, Bits0, Bits...> b) noexcept
+{
+    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
+        "Integral won't fit given number of bits");
+
+    using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
+
+    return packed_int<Integer, Bits0, Bits...>(
+        detail::add_unsigned_saturate<Bits0, Bits...>(
+            add_wrap(a, b).value(), // potentially overflown result
+            static_cast<Integer>(detail::carry_add_vector(a.value(), b.value()) & mask2::value), // carry vector
+            detail::all_same<detail::integer_seq<Bits0, Bits...>>())
+    );
+}
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr packed_int<Integer, Bits0, Bits...> add_signed_saturate(
+    packed_int<Integer, Bits0, Bits...> a,
+    packed_int<Integer, Bits0, Bits...> b) noexcept
+{
+    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
+        "Integral won't fit given number of bits");
+
+    return packed_int<Integer, Bits0, Bits...>(
+        detail::add_signed_saturate<Bits0, Bits...>(
+            a.value(), b.value(), add_wrap(a, b).value())
+    );
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr packed_int<Integer, Bits0, Bits...> sub_wrap(
+    packed_int<Integer, Bits0, Bits...> a,
+    packed_int<Integer, Bits0, Bits...> b) noexcept
+{
+    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
+        "Integral won't fit given number of bits");
+
+    using mask3 = detail::mask_loorder<Integer, Bits0, Bits...>;
+    using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
+    using mask1 = std::integral_constant<Integer, (~mask2::value)
+        & detail::all_ones<Integer, detail::sum<Bits0, Bits...>::value>::value>;
+
+    return packed_int<Integer, Bits0, Bits...>(
+        ((a.value() & mask1::value) + (~b.value() & mask1::value) + (mask3::value & mask1::value)) ^
+        ((a.value() ^ ~b.value()) & mask2::value) ^ (mask2::value & mask3::value)
+    );
+}
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr packed_int<Integer, Bits0, Bits...> sub_unsigned_saturate(
+    packed_int<Integer, Bits0, Bits...> a,
+    packed_int<Integer, Bits0, Bits...> b) noexcept
+{
+    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
+        "Integral won't fit given number of bits");
+
+    using packed = packed_int<Integer, Bits0, Bits...>;
+    using mask3 = detail::mask_loorder<Integer, Bits0, Bits...>;
+    using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
+
+    // a + ~b with saturation (using carry subtraction vector),
+    // then add mask with low order bits with overflow
+    return add_wrap(
+        packed(detail::add_unsigned_saturate<Bits0, Bits...>(
+            add_wrap(a, packed(~b.value())).value(), // potentially overflown result
+            static_cast<Integer>(detail::carry_sub_vector(a.value(), b.value()) & mask2::value), // overflow vector
+            detail::all_same<detail::integer_seq<Bits0, Bits...>>())),
+        packed(mask3::value));
+}
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr packed_int<Integer, Bits0, Bits...> sub_signed_saturate(
+    packed_int<Integer, Bits0, Bits...> a,
+    packed_int<Integer, Bits0, Bits...> b) noexcept
+{
+    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
+        "Integral won't fit given number of bits");
+
+    return packed_int<Integer, Bits0, Bits...>(
+        detail::sub_signed_saturate<Bits0, Bits...>(
+            a.value(), b.value(), sub_wrap(a, b).value())
+    );
 }
 
 } // namespace pint
