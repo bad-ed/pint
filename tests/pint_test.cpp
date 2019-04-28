@@ -236,3 +236,44 @@ TEST(TestSubWrap, WithOverflow) {
 
     ASSERT_EQ(expected_diff, (pint::sub_wrap<3,3,3>(a, b)));
 }
+
+TEST(TestSubWrap, WithOverflow_1BitPacks) {
+    constexpr auto a = pint::make_truncate<uint16_t, 1, 1, 1>(1, 0, 0);
+    constexpr auto b = pint::make_truncate<uint16_t, 1, 1, 1>(1, 1, 0);
+
+    constexpr auto expected_diff = pint::make_truncate<uint16_t, 1, 1, 1>(
+        1 - 1, 0 - 1, 0 - 0);
+
+    ASSERT_EQ(expected_diff, (pint::sub_wrap<1,1,1>(a, b)));
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+TEST(TestSubUnsignedSaturate, NoOverflow) {
+    constexpr auto a = pint::make_truncate<uint16_t, 5, 6, 5>(4, 20, 10);
+    constexpr auto b = pint::make_truncate<uint16_t, 5, 6, 5>(3, 2, 1);
+
+    constexpr auto expected_diff = pint::make_truncate<uint16_t, 5, 6, 5>(
+        4 - 3, 20 - 2, 10 - 1);
+
+    ASSERT_EQ(expected_diff, (pint::sub_unsigned_saturate<5,6,5>(a, b)));
+}
+
+TEST(TestSubUnsignedSaturate, WithOverflow) {
+    constexpr auto a = pint::make_truncate<uint16_t, 5, 6, 5>(4, 2, 1);
+    constexpr auto b = pint::make_truncate<uint16_t, 5, 6, 5>(3, 20, 10);
+
+    constexpr auto expected_diff = pint::make_truncate<uint16_t, 5, 6, 5>(1, 0, 0);
+
+    ASSERT_EQ(expected_diff, (pint::sub_unsigned_saturate<5,6,5>(a, b)));
+}
+
+TEST(TestSubUnsignedSaturate, WithOverflow_1BitPacks) {
+    constexpr auto a = pint::make_truncate<uint16_t, 1, 1, 1>(1, 0, 0);
+    constexpr auto b = pint::make_truncate<uint16_t, 1, 1, 1>(1, 1, 0);
+
+    constexpr auto expected_diff = pint::make_truncate<uint16_t, 1, 1, 1>(
+        0, 0, 0);
+
+    ASSERT_EQ(expected_diff, (pint::sub_unsigned_saturate<1,1,1>(a, b)));
+}

@@ -182,6 +182,18 @@ using shifted_mask = std::integral_constant<Integer, (
         take_1st<OffsetAndMask>::value
 )>;
 
+template<class Integer>
+constexpr Integer carry_add_vector(Integer a, Integer b)
+{
+    return (a & b) | ((a | b) & ~(a + b));
+}
+
+template<class Integer>
+constexpr Integer carry_sub_vector(Integer a, Integer b)
+{
+    return (~a & b) | ((~(a ^ b)) & (a - b));
+}
+
 #if __cpp_fold_expressions
 template<class Integer, class ...Values, class ...MasksAndOffsets>
 constexpr Integer make_truncated_int(seq<MasksAndOffsets...>, Values ...values)
@@ -324,7 +336,7 @@ constexpr Integer add_unsigned_saturate(Integer a, Integer b) {
 
     return detail::add_unsigned_saturate<Bits0, Bits...>(
         add_wrap<Bits0, Bits...>(a, b), // potentially overflown result
-        static_cast<Integer>(((a & b) | ((a | b) & ~(a + b))) & mask2::value), // carry vector
+        static_cast<Integer>(detail::carry_add_vector(a, b) & mask2::value), // carry vector
         detail::all_same<detail::integer_seq<Bits0, Bits...>>());
 }
 
@@ -351,6 +363,24 @@ constexpr Integer sub_wrap(Integer a, Integer b) {
 
     return ((a & mask1::value) + (~b & mask1::value) + (mask3::value & mask1::value)) ^
         ((a ^ ~b) & mask2::value) ^ (mask2::value & mask3::value);
+}
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr Integer sub_unsigned_saturate(Integer a, Integer b) {
+    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
+        "Integral won't fit given number of bits");
+
+    using mask3 = detail::mask_loorder<Integer, Bits0, Bits...>;
+    using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
+
+    // a + ~b with saturation (using carry subtraction vector),
+    // then add mask with low order bits with overflow
+    return add_wrap<Bits0, Bits...>(
+        detail::add_unsigned_saturate<Bits0, Bits...>(
+            add_wrap<Bits0, Bits...>(a, static_cast<Integer>(~b)), // potentially overflown result
+            static_cast<Integer>(detail::carry_sub_vector(a, b) & mask2::value), // overflow vector
+            detail::all_same<detail::integer_seq<Bits0, Bits...>>()),
+        mask3::value);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
