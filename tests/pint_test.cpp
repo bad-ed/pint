@@ -21,6 +21,32 @@ TEST(TestMakeTruncate, InputWithOverflow)
     ASSERT_EQ(expected_result, result.value());
 }
 
+//////////////////////////////////////////////////////////////////////////////
+
+TEST(TestGet, GetUnsigned) {
+    using PackedInt = pint::make_packed_int<5, 6, 5>;
+
+    constexpr auto result = PackedInt(1, 20, 10);
+
+    ASSERT_EQ(1, pint::get<0>(result));
+    ASSERT_EQ(20, pint::get<1>(result));
+    ASSERT_EQ(10, pint::get<2>(result));
+}
+
+TEST(TestGet, GetSigned) {
+    using PackedInt = pint::make_packed_int<5, 6, 5>;
+
+    constexpr auto result = PackedInt(1, -3, -10);
+
+    ASSERT_EQ(1, pint::get_signed<0>(result));
+    ASSERT_EQ(-3, pint::get_signed<1>(result));
+    ASSERT_EQ(-10, pint::get_signed<2>(result));
+
+    ASSERT_NE(-3, pint::get<1>(result));
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
 TEST(TestAddWrap, NoOverflow) {
     using PackedInt = pint::make_packed_int<5, 6, 5>;
 

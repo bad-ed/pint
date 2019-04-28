@@ -49,6 +49,19 @@ struct take_2nd_impl<seq<First, Second, Others...>> {
 };
 template<class Seq> using take_2nd = typename take_2nd_impl<Seq>::type;
 
+// Take Nth element from sequence
+template<size_t Index, class Seq> struct take_nth_impl;
+template<size_t Index, class FirstType, class ...Types>
+struct take_nth_impl<Index, seq<FirstType, Types...>> {
+    using type = typename take_nth_impl<Index-1, seq<Types...>>::type;
+};
+template<class FirstType, class ...Types>
+struct take_nth_impl<0, seq<FirstType, Types...>> {
+    using type = FirstType;
+};
+template<size_t Index, class Seq>
+using take_nth = typename take_nth_impl<Index, Seq>::type;
+
 // Zip two sequences
 template<class Seq0, class Seq1> struct zip_impl;
 template<class ...Types0, class ...Types1>
@@ -181,6 +194,14 @@ using shifted_mask = std::integral_constant<Integer, (
     all_ones<Integer, mask_getter<take_2nd<OffsetAndMask>>::value>::value <<
         take_1st<OffsetAndMask>::value
 )>;
+
+template<size_t Index, size_t ...Bits>
+using take_offset_and_mask = take_nth<Index,
+    zip<
+        mask_offsets_vector<Bits...>,
+        integer_seq<Bits...>
+    >
+>;
 
 template<class Integer>
 constexpr Integer carry_add_vector(Integer a, Integer b) {
@@ -374,6 +395,35 @@ using make_packed_int = packed_int<
     >::type,
     Bits0, Bits...
 >;
+
+///////////////////////////////////////////////////////////////////////////////
+
+template<size_t Index, size_t Bits0, size_t ...Bits, class Integer>
+constexpr Integer get(packed_int<Integer, Bits0, Bits...> packed_int)
+{
+    static_assert(Index <= sizeof...(Bits), "Incorrect index");
+    using mask_and_offset = detail::take_offset_and_mask<Index, Bits0, Bits...>;
+
+    return (packed_int.value() >> detail::take_1st<mask_and_offset>::value)
+        & detail::all_ones<Integer, detail::take_2nd<mask_and_offset>::value>::value;
+}
+
+template<size_t Index, size_t Bits0, size_t ...Bits, class Integer>
+constexpr typename std::make_signed<Integer>::type
+    get_signed(packed_int<Integer, Bits0, Bits...> packed_int)
+{
+    static_assert(Index <= sizeof...(Bits), "Incorrect index");
+    // <offset, mask>
+    using mask_and_offset = detail::take_offset_and_mask<Index, Bits0, Bits...>;
+    using hi_order_bit_no = detail::size_t_<
+        detail::take_2nd<mask_and_offset>::value + detail::take_1st<mask_and_offset>::value>;
+
+    return static_cast<typename std::make_signed<Integer>::type>(
+        packed_int.value() << (sizeof(Integer) * 8 - hi_order_bit_no::value)) >>
+        (sizeof(Integer) * 8 - detail::take_2nd<mask_and_offset>::value);
+}
+
+///////////////////////////////////////////////////////////////////////////////
 
 template<size_t Bits0, size_t ...Bits, class Integer>
 constexpr packed_int<Integer, Bits0, Bits...> add_wrap(
