@@ -24,10 +24,8 @@ TestVector GetRandomPairs(size_t amount_of_pairs) {
 
 class Bench {
 public:
-    ~Bench() {
-        auto duration = std::chrono::steady_clock::now() - m_started;
-
-        std::cout << "Time taken: " << std::chrono::duration<double, std::milli>(duration).count() << "ms\n";
+    std::chrono::steady_clock::duration TimeSinceStart() const {
+        return std::chrono::steady_clock::now() - m_started;
     }
 
 private:
@@ -349,9 +347,16 @@ int main() {
 
     for (auto &bench_info : kTests)
     {
-        std::cout << bench_info.bench_descr << " = ";
+        uint32_t res;
+        std::chrono::duration<double, std::milli> duration;
 
-        Bench $;
-        std::cout << bench_info.bench_func(random_pairs) << " # ";
+        {
+            Bench $;
+            res = bench_info.bench_func(random_pairs);
+            duration = $.TimeSinceStart();
+        }
+
+        std::cout << bench_info.bench_descr << " = " << res << " # " <<
+            "Time taken: " << duration.count() << "ms\n";
     }
 }
