@@ -183,15 +183,18 @@ using shifted_mask = std::integral_constant<Integer, (
 )>;
 
 template<class Integer>
-constexpr Integer carry_add_vector(Integer a, Integer b)
-{
+constexpr Integer carry_add_vector(Integer a, Integer b) {
     return (a & b) | ((a | b) & ~(a + b));
 }
 
 template<class Integer>
-constexpr Integer carry_sub_vector(Integer a, Integer b)
-{
+constexpr Integer carry_sub_vector(Integer a, Integer b) {
     return (~a & b) | ((~(a ^ b)) & (a - b));
+}
+
+template<class Integer>
+constexpr Integer overflow_signed_sub_vector(Integer a, Integer b, Integer res) {
+    return (~a & b & res) | (a & ~(b | res));
 }
 
 #if __cpp_fold_expressions
@@ -267,7 +270,7 @@ constexpr Integer add_signed_saturate_same_length(Integer sum, Integer overflow)
 }
 
 template<size_t Bits0, size_t ...Bits, class Integer>
-constexpr Integer add_signed_saturate(
+constexpr Integer apply_signed_saturation(
     Integer sum, Integer overflow, std::true_type /* packs of same length */)
 {
     return add_signed_saturate_same_length<Bits0>(static_cast<Integer>(
@@ -275,30 +278,30 @@ constexpr Integer add_signed_saturate(
 }
 
 template<class Integer, class MasksAndOffsets>
-constexpr Integer add_signed_saturate_var_len2(Integer sum, Integer overflow, MasksAndOffsets masks_and_offsets)
+constexpr Integer apply_signed_saturate_var_len2(Integer sum, Integer overflow, MasksAndOffsets masks_and_offsets)
 {
     return sum ^ add_unsigned_saturate2(overflow & sum, masks_and_offsets);
 }
 
 template<size_t ...Bits, class Integer>
-constexpr Integer add_signed_saturate_var_len(Integer sum, Integer overflow)
+constexpr Integer apply_signed_saturate_var_len(Integer sum, Integer overflow)
 {
     using masks_and_offsets = zip<
         mask_offsets_vector<Bits...>,
         zip<integer_seq<Bits...>, integer_seq<(Bits-1)...>>
     >;
 
-    return add_signed_saturate_var_len2<Integer>(
+    return apply_signed_saturate_var_len2<Integer>(
         (sum ^ overflow) | add_unsigned_saturate2(overflow, masks_and_offsets()),
         overflow,
         masks_and_offsets());
 }
 
 template<size_t Bits0, size_t ...Bits, class Integer>
-constexpr Integer add_signed_saturate(
+constexpr Integer apply_signed_saturation(
     Integer sum, Integer overflow, std::false_type /* packs of different lengths */)
 {
-    return add_signed_saturate_var_len<Bits0, Bits...>(sum, overflow);
+    return apply_signed_saturate_var_len<Bits0, Bits...>(sum, overflow);
 }
 
 template<size_t Bits0, size_t ...Bits, class Integer>
@@ -306,9 +309,20 @@ constexpr Integer add_signed_saturate(
     Integer a, Integer b, Integer sum)
 {
     using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
-    return add_signed_saturate<Bits0, Bits...>(
+    return apply_signed_saturation<Bits0, Bits...>(
         sum,
         static_cast<Integer>((~(a ^ b)) & (sum ^ b) & mask2::value),
+        detail::all_same<detail::integer_seq<Bits0, Bits...>>());
+}
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr Integer sub_signed_saturate(
+    Integer a, Integer b, Integer diff)
+{
+    using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
+    return apply_signed_saturation<Bits0, Bits...>(
+        diff,
+        static_cast<Integer>(overflow_signed_sub_vector(a, b, diff) & mask2::value),
         detail::all_same<detail::integer_seq<Bits0, Bits...>>());
 }
 
@@ -381,6 +395,15 @@ constexpr Integer sub_unsigned_saturate(Integer a, Integer b) {
             static_cast<Integer>(detail::carry_sub_vector(a, b) & mask2::value), // overflow vector
             detail::all_same<detail::integer_seq<Bits0, Bits...>>()),
         mask3::value);
+}
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr Integer sub_signed_saturate(Integer a, Integer b) {
+    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
+        "Integral won't fit given number of bits");
+
+    return detail::sub_signed_saturate<Bits0, Bits...>(
+        a, b, sub_wrap<Bits0, Bits...>(a, b));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
