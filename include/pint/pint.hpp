@@ -107,29 +107,55 @@ template<> struct sum<> {
 };
 #endif
 
-// Make mask which is equal to (1 << (Bits0 - 1)) | (1 << (Bits1 - 1)) | (1 << (Bits2 - 1)) | ...
-template<class T, class IntegerSeq> struct mask_for_add_impl;
+// Vector of offsets
+template<size_t... Bits>
+using mask_offsets_vector = prepend_seq<
+    size_t_<0>,
+    make_sum_vector_n<sizeof...(Bits) - 1, Bits...> // (0, Bits0, Bits0 + Bits1, Bits0 + Bits1 + Bits2, ...)
+>;
+
+// Subtract from each element of vector value
+template<class IntegerSeq, size_t Value> struct vector_sub_impl;
+template<size_t Value, size_t ...Bits>
+struct vector_sub_impl<integer_seq<Bits...>, Value>
+{
+    using type = integer_seq<(Bits - Value)...>;
+};
+template<class IntegerSeq, size_t Value>
+using vector_sub = typename vector_sub_impl<IntegerSeq, Value>::type;
+
+// Make mask which is equal to (1 << Bits0) | (1 << Bits1) | (1 << Bits2) | ...
+template<class T, class IntegerSeq> struct make_mask_from_bitpos_impl;
 
 #if __cpp_fold_expressions
 template<class T, size_t ...Bits>
-struct mask_for_add_impl<T, integer_seq<Bits...>> {
-    static const T value = (... | (1 << (Bits - 1)));
+struct make_mask_from_bitpos_impl<T, integer_seq<Bits...>> {
+    static const T value = (... | (1 << Bits));
 };
 #else
 template<class T, size_t Bits0, size_t ...Bits>
-struct mask_for_add_impl<T, integer_seq<Bits0, Bits...>> {
-    static const T value = (1 << (Bits0 - 1)) |
-        mask_for_add_impl<T, integer_seq<Bits...>>::value;
+struct make_mask_from_bitpos_impl<T, integer_seq<Bits0, Bits...>> {
+    static const T value = (1 << Bits0) |
+        make_mask_from_bitpos_impl<T, integer_seq<Bits...>>::value;
 };
-template<class T> struct mask_for_add_impl<T, integer_seq<>> {
+template<class T> struct make_mask_from_bitpos_impl<T, integer_seq<>> {
     static const T value = 0;
 };
 #endif
 
+// Mask = (1 << (Bits0 - 1)) | (1 << (Bits0 + Bits1 - 1)) | (1 << (Bits0 + Bits1 + Bits2 - 1)) | ...
 template<class T, size_t ...Bits>
-using mask_for_add = std::integral_constant<T,
-    mask_for_add_impl<T,
-        make_sum_vector<Bits...>
+using mask_hiorder = std::integral_constant<T,
+    make_mask_from_bitpos_impl<T,
+        vector_sub<make_sum_vector<Bits...>, 1>
+    >::value
+>;
+
+// Make mask which is equal to (1 << 0) | (1 << Bits0) | (1 << Bits0 + Bits1) | (1 << Bits0 + Bits1 + Bits2) | ...
+template<class T, size_t ...Bits>
+using mask_loorder = std::integral_constant<T,
+    make_mask_from_bitpos_impl<T,
+        mask_offsets_vector<Bits...>
     >::value
 >;
 
@@ -145,11 +171,6 @@ template<class T> struct all_ones<T, 64> {
 };
 
 // Make sequence of pairs <offset of mask, mask length>
-template<size_t... Bits>
-using mask_offsets_vector = prepend_seq<
-    size_t_<0>,
-    make_sum_vector_n<sizeof...(Bits) - 1, Bits...> // (0, Bits0, Bits0 + Bits1, Bits0 + Bits1 + Bits2, ...)
->;
 template<size_t... Bits>
 using offset_and_mask_vector = zip<
     mask_offsets_vector<Bits...>,
@@ -272,7 +293,7 @@ template<size_t Bits0, size_t ...Bits, class Integer>
 constexpr Integer add_signed_saturate(
     Integer a, Integer b, Integer sum)
 {
-    using mask2 = detail::mask_for_add<Integer, Bits0, Bits...>;
+    using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
     return add_signed_saturate<Bits0, Bits...>(
         sum,
         static_cast<Integer>((~(a ^ b)) & (sum ^ b) & mask2::value),
@@ -286,7 +307,7 @@ constexpr Integer add_wrap(Integer a, Integer b) {
     static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
         "Integral won't fit given number of bits");
 
-    using mask2 = detail::mask_for_add<Integer, Bits0, Bits...>;
+    using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
     using mask1 = std::integral_constant<Integer, (~mask2::value)
         & detail::all_ones<Integer, detail::sum<Bits0, Bits...>::value>::value>;
 
@@ -299,7 +320,7 @@ constexpr Integer add_unsigned_saturate(Integer a, Integer b) {
     static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
         "Integral won't fit given number of bits");
 
-    using mask2 = detail::mask_for_add<Integer, Bits0, Bits...>;
+    using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
 
     return detail::add_unsigned_saturate<Bits0, Bits...>(
         add_wrap<Bits0, Bits...>(a, b), // potentially overflown result
@@ -315,6 +336,24 @@ constexpr Integer add_signed_saturate(Integer a, Integer b) {
     return detail::add_signed_saturate<Bits0, Bits...>(
         a, b, add_wrap<Bits0, Bits...>(a, b));
 }
+
+///////////////////////////////////////////////////////////////////////////////
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr Integer sub_wrap(Integer a, Integer b) {
+    static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
+        "Integral won't fit given number of bits");
+
+    using mask3 = detail::mask_loorder<Integer, Bits0, Bits...>;
+    using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
+    using mask1 = std::integral_constant<Integer, (~mask2::value)
+        & detail::all_ones<Integer, detail::sum<Bits0, Bits...>::value>::value>;
+
+    return ((a & mask1::value) + (~b & mask1::value) + (mask3::value & mask1::value)) ^
+        ((a ^ ~b) & mask2::value) ^ (mask2::value & mask3::value);
+}
+
+///////////////////////////////////////////////////////////////////////////////
 
 template<class Integer, size_t Bits0, size_t ...Bits>
 constexpr Integer make_truncate(Integer value0,

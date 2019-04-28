@@ -194,3 +194,45 @@ TEST(TestAddSignedSaturate, VarLength_Negative_Overflow) {
 
     ASSERT_EQ(expected_sum, (pint::add_signed_saturate<4,5,4>(a, b)));
 }
+
+//////////////////////////////////////////////////////////////////////////////
+
+TEST(TestSubWrap, NoOverflow) {
+    constexpr auto a = pint::make_truncate<uint16_t, 5, 6, 5>(4, 20, 10);
+    constexpr auto b = pint::make_truncate<uint16_t, 5, 6, 5>(3, 2, 1);
+
+    constexpr auto expected_diff = pint::make_truncate<uint16_t, 5, 6, 5>(
+        4 - 3, 20 - 2, 10 - 1);
+
+    ASSERT_EQ(expected_diff, (pint::sub_wrap<5,6,5>(a, b)));
+}
+
+TEST(TestSubWrap, NoOverflow2) {
+    constexpr auto a = pint::make_truncate<uint16_t, 3, 3, 3>(7, 6, 5);
+    constexpr auto b = pint::make_truncate<uint16_t, 3, 3, 3>(1, 2, 3);
+
+    constexpr auto expected_diff = pint::make_truncate<uint16_t, 3, 3, 3>(
+        7 - 1, 6 - 2, 5 - 3);
+
+    ASSERT_EQ(expected_diff, (pint::sub_wrap<3,3,3>(a, b)));
+}
+
+TEST(TestSubWrap, NoOverflow_1BitPacks) {
+    constexpr auto a = pint::make_truncate<uint16_t, 1, 1, 1>(1, 1, 0);
+    constexpr auto b = pint::make_truncate<uint16_t, 1, 1, 1>(1, 0, 0);
+
+    constexpr auto expected_diff = pint::make_truncate<uint16_t, 1, 1, 1>(
+        1 - 1, 1 - 0, 0 - 0);
+
+    ASSERT_EQ(expected_diff, (pint::sub_wrap<1,1,1>(a, b)));
+}
+
+TEST(TestSubWrap, WithOverflow) {
+    constexpr auto a = pint::make_truncate<uint16_t, 3, 3, 3>(1, 4, 2);
+    constexpr auto b = pint::make_truncate<uint16_t, 3, 3, 3>(7, 2, 6);
+
+    constexpr auto expected_diff = pint::make_truncate<uint16_t, 3, 3, 3>(
+        1 - 7, 4 - 2, 2 - 6);
+
+    ASSERT_EQ(expected_diff, (pint::sub_wrap<3,3,3>(a, b)));
+}
