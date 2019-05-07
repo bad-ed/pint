@@ -47,6 +47,21 @@ TEST(TestGet, GetSigned) {
 
 //////////////////////////////////////////////////////////////////////////////
 
+TEST(TestSlice, Slice) {
+    using PackedInt = pint::packed_int<uint16_t, 1, 2, 3, 4, 5>;
+    using SlicedInt = pint::packed_int<uint16_t, 3, 4>;
+
+    constexpr auto value = PackedInt(1, 2, 3, 4, 5);
+    constexpr auto sliced = pint::slice<2, 4>(value);
+
+    static_assert(std::is_same<std::decay<decltype(sliced)>::type, SlicedInt>::value,
+        "Wrong type of sliced value");
+
+    ASSERT_EQ(sliced.value(), SlicedInt(3,4).value());
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
 TEST(TestAddWrap, NoOverflow) {
     using PackedInt = pint::make_packed_int<5, 6, 5>;
 

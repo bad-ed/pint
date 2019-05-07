@@ -5,7 +5,15 @@
 #include <utility>
 
 namespace pint {
+
+using std::size_t;
+
+template<class Integer, size_t Bits0, size_t ...Bits> class packed_int;
+
 namespace detail {
+
+template<class Type>
+struct identity { using type = Type; };
 
 template<size_t value>
 using size_t_ = std::integral_constant<size_t, value>;
@@ -13,6 +21,27 @@ using size_t_ = std::integral_constant<size_t, value>;
 template<class ...Types> struct seq {};
 template<size_t ...Values>
 using integer_seq = seq<size_t_<Values>...>;
+
+// Concat two sequences together
+template<class Seq1, class Seq2> struct concat_impl;
+template<class ...Types1, class ...Types2>
+struct concat_impl<seq<Types1...>, seq<Types2...>> {
+    using type = seq<Types1..., Types2...>;
+};
+template<class Seq1, class Seq2>
+using concat = typename concat_impl<Seq1, Seq2>::type;
+
+// Create sequence of Type repeated N times
+template<class Type, size_t N>
+struct repeat_impl {
+    using l1 = typename repeat_impl<Type, N / 2>::type;
+    using l2 = typename repeat_impl<Type, N % 2>::type;
+
+    using type = concat<concat<l1, l1>, l2>;
+};
+template<class Type> struct repeat_impl<Type, 1> { using type = seq<Type>; };
+template<class Type> struct repeat_impl<Type, 0> { using type = seq<>; };
+template<class Type, size_t N> using repeat = typename repeat_impl<Type, N>::type;
 
 // Prepend list<Types...> with type
 template<class T, class Seq> struct prepend_seq_impl;
@@ -23,15 +52,6 @@ struct prepend_seq_impl<T, seq<Types...>> {
 
 template<class T, class Seq>
 using prepend_seq = typename prepend_seq_impl<T, Seq>::type;
-
-// Pop front from list<Types...>
-template<class Seq> struct pop_front_impl;
-template<class T, class ...Types>
-struct pop_front_impl<seq<T, Types...>> {
-    using type = seq<Types...>;
-};
-template<class Seq>
-using pop_front = typename pop_front_impl<Seq>::type;
 
 // Take first element from sequence
 template<class Seq> struct take_1st_impl;
@@ -49,18 +69,52 @@ struct take_2nd_impl<seq<First, Second, Others...>> {
 };
 template<class Seq> using take_2nd = typename take_2nd_impl<Seq>::type;
 
+// Pop front from list<Types...>
+template<class Seq> struct pop_front_impl;
+template<class T, class ...Types>
+struct pop_front_impl<seq<T, Types...>> {
+    using type = seq<Types...>;
+};
+template<class Seq>
+using pop_front = typename pop_front_impl<Seq>::type;
+
+// Pop first N types from sequence
+template<class Seq, class DummySeq> struct pop_front_n_impl;
+template<class ...Types1, class ...Types2>
+struct pop_front_n_impl<seq<Types1...>, seq<Types2...>> {
+    template<class ...U>
+    static seq<U...> deduce(Types2*..., identity<U>*...);
+    using type = decltype(deduce(static_cast<identity<Types1>*>(nullptr)...));
+};
+template<size_t N, class Seq>
+using pop_front_n = typename pop_front_n_impl<Seq, repeat<void, N>>::type;
+
+// Make sequence of first N types of given sequence
+template<size_t N, class Seq> struct take_front_n_impl {
+    using type = prepend_seq<
+        take_1st<Seq>, typename take_front_n_impl<N-1, pop_front<Seq>>::type
+    >;
+};
+template<class Seq> struct take_front_n_impl<0, Seq> {
+    using type = seq<>;
+};
+template<size_t N, class Seq>
+using take_front_n = typename take_front_n_impl<N,Seq>::type;
+
 // Take Nth element from sequence
-template<size_t Index, class Seq> struct take_nth_impl;
-template<size_t Index, class FirstType, class ...Types>
-struct take_nth_impl<Index, seq<FirstType, Types...>> {
-    using type = typename take_nth_impl<Index-1, seq<Types...>>::type;
+template<size_t Index, class Seq> struct take_nth_impl {
+    using type = take_1st<pop_front_n<Index, Seq>>;
 };
-template<class FirstType, class ...Types>
-struct take_nth_impl<0, seq<FirstType, Types...>> {
-    using type = FirstType;
+template<class Seq> struct take_nth_impl<0, Seq> {
+    using type = take_1st<Seq>;
 };
+
 template<size_t Index, class Seq>
 using take_nth = typename take_nth_impl<Index, Seq>::type;
+
+// Slice sequence
+template<size_t First, size_t Last, class Seq>
+using slice = take_front_n<Last-First, pop_front_n<First, Seq>>;
 
 // Zip two sequences
 template<class Seq0, class Seq1> struct zip_impl;
@@ -119,6 +173,9 @@ template<> struct sum<> {
     static const size_t value = 0;
 };
 #endif
+
+template<class Seq> struct sum_seq;
+template<size_t ...Bits> struct sum_seq<integer_seq<Bits...>> : sum<Bits...> {};
 
 // Vector of offsets
 template<size_t... Bits>
@@ -362,6 +419,26 @@ template<> struct find_appropriate_int<16> { using type = uint16_t; };
 template<> struct find_appropriate_int<32> { using type = uint32_t; };
 template<> struct find_appropriate_int<64> { using type = uint64_t; };
 
+// Make packed_int from vector of bits
+template<class Integer, class BitsVector> struct packed_int_from_seq_impl;
+template<class Integer, size_t Bits0, size_t ...Bits>
+struct packed_int_from_seq_impl<Integer, integer_seq<Bits0, Bits...>> {
+    using type = packed_int<Integer, Bits0, Bits...>;
+};
+template<class Integer, class BitsVector>
+using packed_int_from_seq = typename packed_int_from_seq_impl<Integer, BitsVector>::type;
+
+// Sliced seq
+template<size_t First, size_t Last, class Integer, size_t Bits0, size_t ...Bits>
+struct sliced_int_impl {
+    static_assert(First < Last && Last <= sizeof...(Bits) + 1, "Incorrect slice bounds");
+
+    using sliced_bits_seq = slice<First, Last, integer_seq<Bits0, Bits...>>;
+    using type = packed_int_from_seq<Integer, sliced_bits_seq>;
+};
+template<size_t First, size_t Last, class Integer, size_t Bits0, size_t ...Bits>
+using sliced_int = typename sliced_int_impl<First, Last, Integer, Bits0, Bits...>::type;
+
 } // namespace detail
 
 template<class Integer, size_t Bits0, size_t ...Bits>
@@ -511,6 +588,19 @@ constexpr packed_int<Integer, Bits0, Bits...> sub_signed_saturate(
         detail::sub_signed_saturate<Bits0, Bits...>(
             a.value(), b.value(), sub_wrap(a, b).value())
     );
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+template<size_t Start, size_t End, size_t Bits0, size_t ...Bits, class Integer>
+constexpr detail::sliced_int<Start,End,Integer,Bits0,Bits...>
+    slice(packed_int<Integer, Bits0, Bits...> value) noexcept
+{
+    using lo_bits_sum = detail::sum_seq<detail::take_front_n<Start, detail::integer_seq<Bits0, Bits...>>>;
+    using middle_bits_sum = detail::sum_seq<detail::slice<Start, End, detail::integer_seq<Bits0, Bits...>>>;
+
+    return detail::sliced_int<Start,End,Integer,Bits0,Bits...>(
+        (value.value() >> lo_bits_sum::value) & detail::all_ones<Integer, middle_bits_sum::value>::value);
 }
 
 } // namespace pint
