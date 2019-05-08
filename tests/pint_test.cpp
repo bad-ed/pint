@@ -403,3 +403,71 @@ TEST(TestSubSignedSaturate, NegativePositiveOverflow) {
 
     ASSERT_EQ(expected_diff.value(), pint::sub_signed_saturate(a, b).value());
 }
+
+//////////////////////////////////////////////////////////////////////////////
+
+TEST(TestMinUnsigned, AllFirstLessThanSecond) {
+    using PackedInt = pint::make_packed_int<4,6,4>;
+
+    constexpr auto a = PackedInt(1,2,3);
+    constexpr auto b = PackedInt(4,5,15);
+
+    constexpr auto expected_min = PackedInt(1,2,3);
+
+    ASSERT_EQ(expected_min.value(), pint::min_unsigned(a,b).value());
+}
+
+TEST(TestMinUnsigned, AllSecondLessThanFirst) {
+    using PackedInt = pint::make_packed_int<4,6,4>;
+
+    constexpr auto a = PackedInt(4,5,15);
+    constexpr auto b = PackedInt(1,2,3);
+
+    constexpr auto expected_min = PackedInt(1,2,3);
+
+    ASSERT_EQ(expected_min.value(), pint::min_unsigned(a,b).value());
+}
+
+TEST(TestMinUnsigned, Interleaved) {
+    using PackedInt = pint::make_packed_int<4,6,4>;
+
+    constexpr auto a = PackedInt(4,5,3);
+    constexpr auto b = PackedInt(1,15,3);
+
+    constexpr auto expected_min = PackedInt(1,5,3);
+
+    ASSERT_EQ(expected_min.value(), pint::min_unsigned(a,b).value());
+}
+
+TEST(TestMaxUnsigned, AllFirstLessThanSecond) {
+    using PackedInt = pint::make_packed_int<4,6,4>;
+
+    constexpr auto a = PackedInt(1,2,3);
+    constexpr auto b = PackedInt(4,5,15);
+
+    constexpr auto expected_max = PackedInt(4,5,15);
+
+    ASSERT_EQ(expected_max.value(), pint::max_unsigned(a,b).value());
+}
+
+TEST(TestMaxUnsigned, AllSecondLessThanFirst) {
+    using PackedInt = pint::make_packed_int<4,6,4>;
+
+    constexpr auto a = PackedInt(4,5,15);
+    constexpr auto b = PackedInt(1,2,3);
+
+    constexpr auto expected_max = PackedInt(4,5,15);
+
+    ASSERT_EQ(expected_max.value(), pint::max_unsigned(a,b).value());
+}
+
+TEST(TestMaxUnsigned, Interleaved) {
+    using PackedInt = pint::make_packed_int<4,6,4>;
+
+    constexpr auto a = PackedInt(4,5,3);
+    constexpr auto b = PackedInt(1,15,3);
+
+    constexpr auto expected_max = PackedInt(4,15,3);
+
+    ASSERT_EQ(expected_max.value(), pint::max_unsigned(a,b).value());
+}

@@ -420,14 +420,19 @@ constexpr Integer sub_signed_saturate(Integer a, Integer b, Integer diff)
 }
 
 template<class Integer, size_t Bits0, size_t ...Bits>
-static constexpr Integer make_truncate(Integer value0,
-    typename std::integral_constant<Integer, Bits>::value_type ...values) noexcept
+constexpr Integer make_truncate(Integer value0,
+    typename std::integral_constant<Integer, Bits>::value_type ...values)
 {
     static_assert(sizeof(Integer) * 8 >= detail::sum<Bits0, Bits...>::value,
         "Integral won't fit given number of bits");
 
     using offset_and_mask = detail::offset_and_mask_vector<Bits0, Bits...>;
     return detail::make_truncated_int<Integer>(offset_and_mask(), value0, values...);
+}
+
+template<class Integer>
+constexpr Integer interleave(Integer a, Integer b, Integer mask) {
+    return (a & mask) | (b & ~mask);
 }
 
 template<size_t RequiredBits> struct find_appropriate_int;
@@ -625,6 +630,40 @@ constexpr detail::sliced_int<Start,End,Integer,Bits0,Bits...>
 
     return detail::sliced_int<Start,End,Integer,Bits0,Bits...>(
         (value.value() >> lo_bits_sum::value) & detail::all_ones<Integer, middle_bits_sum::value>::value);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr packed_int<Integer, Bits0, Bits...> min_unsigned(
+    packed_int<Integer, Bits0, Bits...> a,
+    packed_int<Integer, Bits0, Bits...> b) noexcept
+{
+    using hi_order_bits_mask = detail::mask_hiorder<Integer, Bits0, Bits...>;
+    return packed_int<Integer, Bits0, Bits...>(
+        detail::interleave(a.value(), b.value(),
+            static_cast<Integer>(
+                detail::make_unsigned_saturation_mask<Bits0, Bits...>(
+                    detail::carry_sub_vector(a.value(), b.value()) & hi_order_bits_mask::value)
+            )
+        )
+    );
+}
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr packed_int<Integer, Bits0, Bits...> max_unsigned(
+    packed_int<Integer, Bits0, Bits...> a,
+    packed_int<Integer, Bits0, Bits...> b) noexcept
+{
+    using hi_order_bits_mask = detail::mask_hiorder<Integer, Bits0, Bits...>;
+    return packed_int<Integer, Bits0, Bits...>(
+        detail::interleave(a.value(), b.value(),
+            static_cast<Integer>(
+                detail::make_unsigned_saturation_mask<Bits0, Bits...>(
+                    detail::carry_sub_vector(b.value(), a.value()) & hi_order_bits_mask::value)
+            )
+        )
+    );
 }
 
 } // namespace pint
