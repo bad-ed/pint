@@ -489,31 +489,6 @@ struct unsigned_saturation_mask_type_2_impl {
 template<class Integer, size_t ...Bits>
 using unsigned_saturation_mask_type_2 = typename unsigned_saturation_mask_type_2_impl<Integer, Bits...>::type;
 
-// TODO: Get rid of this
-#if __cpp_fold_expressions
-template<class ...OffsetAndMasks, class Integer>
-constexpr Integer make_unsigned_saturation_mask_var_len(Integer carrys, seq<OffsetAndMasks...>) {
-    return (... |
-        (carrys & shifted_mask<Integer, OffsetAndMasks, take_1st>::value
-            ? shifted_mask<Integer, OffsetAndMasks, take_2nd>::value
-            : 0));
-}
-#else
-template<class Integer>
-constexpr Integer make_unsigned_saturation_mask_var_len(Integer carrys, seq<>) {
-    return 0;
-}
-template<class ...OffsetAndMasks, class Integer>
-constexpr Integer make_unsigned_saturation_mask_var_len(
-    Integer carrys, seq<OffsetAndMasks...>)
-{
-    using offset_and_mask = take_1st<seq<OffsetAndMasks...>>;
-
-    return (carrys & shifted_mask<Integer, offset_and_mask, take_1st>::value ? shifted_mask<Integer, offset_and_mask, take_2nd>::value : 0) |
-        make_unsigned_saturation_mask_var_len(carrys, pop_front<seq<OffsetAndMasks...>>());
-}
-#endif
-
 #if __cpp_fold_expressions
 template<class ...Masks, class Integer>
 constexpr Integer make_unsigned_saturation_mask_type_2(Integer carrys, seq<Masks...>) {
@@ -550,8 +525,6 @@ constexpr Integer make_unsigned_saturation_mask(Integer carrys)
     );
 }
 
-/////////////////////////////////////////////////////////////////////
-
 // Unsigned sum with saturation
 template<size_t Bits0, size_t ...Bits, class Integer>
 constexpr Integer add_unsigned_saturate(Integer sum, Integer carrys)
@@ -559,52 +532,20 @@ constexpr Integer add_unsigned_saturate(Integer sum, Integer carrys)
     return sum | make_unsigned_saturation_mask<Bits0, Bits...>(carrys);
 }
 
+/////////////////////////////////////////////////////////////////////
 // Signed sum with saturation
-template<size_t BitmaskLen, class Integer>
-Integer signed_payload_bits_from_overflow(Integer overflow)
-{
-    return overflow - (overflow >> (BitmaskLen-1));
-}
 
-template<size_t Bits0, class Integer>
-constexpr Integer add_signed_saturate_same_length(Integer sum, Integer overflow)
-{
-    return sum ^ signed_payload_bits_from_overflow<Bits0>(sum & overflow);
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr Integer make_signed_saturation_mask(Integer overflow) {
+    using saturation_mask_type = detect_saturation_mask_type<Integer, Bits0, Bits...>;
+    return overflow - dispatch_make_unsigned_saturation_mask<Bits0, Bits...>(overflow, saturation_mask_type());
 }
 
 template<size_t Bits0, size_t ...Bits, class Integer>
-constexpr Integer apply_signed_saturation(
-    Integer sum, Integer overflow, std::true_type /* packs of same length */)
+constexpr Integer apply_signed_saturation(Integer sum, Integer overflow)
 {
-    return add_signed_saturate_same_length<Bits0>(static_cast<Integer>(
-        (sum ^ overflow) | signed_payload_bits_from_overflow<Bits0>(overflow)), overflow);
-}
-
-template<class Integer, class MasksAndOffsets>
-constexpr Integer apply_signed_saturate_var_len2(Integer sum, Integer overflow, MasksAndOffsets masks_and_offsets)
-{
-    return sum ^ make_unsigned_saturation_mask_var_len(overflow & sum, masks_and_offsets);
-}
-
-template<size_t ...Bits, class Integer>
-constexpr Integer apply_signed_saturate_var_len(Integer sum, Integer overflow)
-{
-    using masks_and_offsets = zip<
-        mask_offsets_vector<Bits...>,
-        zip<integer_seq<Bits...>, integer_seq<(Bits-1)...>>
-    >;
-
-    return apply_signed_saturate_var_len2<Integer>(
-        (sum ^ overflow) | make_unsigned_saturation_mask_var_len(overflow, masks_and_offsets()),
-        overflow,
-        masks_and_offsets());
-}
-
-template<size_t Bits0, size_t ...Bits, class Integer>
-constexpr Integer apply_signed_saturation(
-    Integer sum, Integer overflow, std::false_type /* packs of different lengths */)
-{
-    return apply_signed_saturate_var_len<Bits0, Bits...>(sum, overflow);
+    return ((sum ^ overflow) | make_signed_saturation_mask<Bits0, Bits...>(overflow)) ^
+        make_signed_saturation_mask<Bits0, Bits...>(overflow & ~sum);
 }
 
 template<size_t Bits0, size_t ...Bits, class Integer>
@@ -612,9 +553,7 @@ constexpr Integer add_signed_saturate(Integer a, Integer b, Integer sum)
 {
     using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
     return apply_signed_saturation<Bits0, Bits...>(
-        sum,
-        static_cast<Integer>((~(a ^ b)) & (sum ^ b) & mask2::value),
-        detail::all_same<detail::integer_seq<Bits0, Bits...>>());
+        sum, static_cast<Integer>((~(a ^ b)) & (sum ^ b) & mask2::value));
 }
 
 template<size_t Bits0, size_t ...Bits, class Integer>
@@ -622,9 +561,7 @@ constexpr Integer sub_signed_saturate(Integer a, Integer b, Integer diff)
 {
     using mask2 = detail::mask_hiorder<Integer, Bits0, Bits...>;
     return apply_signed_saturation<Bits0, Bits...>(
-        diff,
-        static_cast<Integer>(overflow_signed_sub_vector(a, b, diff) & mask2::value),
-        detail::all_same<detail::integer_seq<Bits0, Bits...>>());
+        diff, static_cast<Integer>(overflow_signed_sub_vector(a, b, diff) & mask2::value));
 }
 
 template<class Integer, size_t Bits0, size_t ...Bits>
