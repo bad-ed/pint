@@ -167,6 +167,46 @@ struct zip_impl<seq<Types0...>, seq<Types1...>> {
 template<class Seq0, class Seq1>
 using zip = typename zip_impl<Seq0, Seq1>::type;
 
+// Given sequence seq<seq<Key0, Value0>, seq<Key1, Value1>, ...>,
+// return sequence of values whose corresponding keys are equal to Key
+template<class Key, class Seq> struct filter_map_by_key_impl { using type = Seq; };
+template<class FirstKey, class FirstValue, class ...Rest, class Key>
+struct filter_map_by_key_impl<Key, seq<seq<FirstKey, FirstValue>, Rest...>> {
+    using step_result = typename std::conditional<
+        std::is_same<Key, FirstKey>::value,
+        seq<FirstValue>,
+        seq<>
+    >::type;
+
+    using type = concat<
+        step_result,
+        typename filter_map_by_key_impl<Key, seq<Rest...>>::type
+    >;
+};
+template<class Key, class Seq>
+using filter_map_by_key = typename filter_map_by_key_impl<Key, Seq>::type;
+
+// Given sequence seq<seq<Key0, Value0>, seq<Key1, Value1>, ...>,
+// return seq<Key0, Key1, ...>
+template<class Seq> struct map_keys_impl;
+template<class ...Seqs>
+struct map_keys_impl<seq<Seqs...>> {
+    using type = seq<take_1st<Seqs>...>;
+};
+template<class Seq> using map_keys = typename map_keys_impl<Seq>::type;
+
+// Unzips sequence seq<seq<Key0, Value0>, seq<Key1, Value1>, ...> to
+// seq<seq<KeyX, seq<ValueX0, ValueX1, ...>> >
+template<class Keys, class Seq> struct unzip_to_map_impl;
+template<class ...Keys, class Seq>
+struct unzip_to_map_impl<seq<Keys...>, Seq> {
+    using type = seq<
+        seq<Keys, filter_map_by_key<Keys, Seq>>...
+    >;
+};
+template<class Seq>
+using unzip_to_map = typename unzip_to_map_impl<unique<map_keys<Seq>>, Seq>::type;
+
 // Check if all elements in sequence are the same
 template<class Seq> struct all_same;
 
@@ -390,6 +430,66 @@ struct detect_saturation_mask_type_impl {
 template<class Integer, size_t ...Bits>
 using detect_saturation_mask_type = typename detect_saturation_mask_type_impl<Integer, Bits...>::type;
 
+// Type 0 saturation mask
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr Integer dispatch_make_unsigned_saturation_mask(
+    Integer carrys, size_t_<0> /* all bits are the same */)
+{
+    return (carrys >> (Bits0 - 1));
+}
+
+// Type 1 saturation mask
+#if __cpp_fold_expressions
+template<size_t ...Bits, class Integer>
+constexpr Integer make_unsigned_saturation_mask_type_1(Integer carrys, integer_seq<Bits...>) {
+    return static_cast<Integer>((... | (carrys >> (Bits - 1))));
+}
+#else
+template<class Integer>
+constexpr Integer make_unsigned_saturation_mask_type_1(Integer carrys, seq<>) {
+    return 0;
+}
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr Integer make_unsigned_saturation_mask_type_1(Integer carrys, integer_seq<Bits0, Bits...>) {
+    return static_cast<Integer>((carrys >> (Bits0 - 1))
+        | make_unsigned_saturation_mask_type_1(carrys, integer_seq<Bits...>()));
+}
+#endif
+template<size_t ...Bits, class Integer>
+constexpr Integer dispatch_make_unsigned_saturation_mask(
+    Integer carrys, size_t_<1> /* packs of variable length (type 1) */)
+{
+    using loorder = mask_loorder<Integer, Bits...>;
+    return make_unsigned_saturation_mask_type_1(carrys, unique<integer_seq<Bits...>>())
+        & loorder::value;
+}
+
+// Type 2 saturation mask
+template<class Integer, class MasksMap>
+struct unsigned_saturation_mask_type_2_helper;
+
+template<class Integer, class ...Keys, class ...Offsets>
+struct unsigned_saturation_mask_type_2_helper<Integer, seq<seq<Keys, Offsets>...>> {
+    using type = seq<
+        seq<Keys, std::integral_constant<Integer, make_mask_from_bitpos_impl<Integer, Offsets>::value>>...
+    >;
+};
+
+template<class Integer, size_t ...Bits>
+struct unsigned_saturation_mask_type_2_impl {
+    // Offsets of all masks
+    using offsets = mask_offsets_vector<Bits...>;
+    // Zip it with mask sizes
+    using masks_and_sizes = zip<integer_seq<Bits...>, offsets>;
+    // Make map of masks <MaskSize, <Offset0, Offset1, ...>>
+    using masks_map = unzip_to_map<masks_and_sizes>;
+    // Make map of masks <MaskSize, LoOrder mask>
+    using type = typename unsigned_saturation_mask_type_2_helper<Integer, masks_map>::type;
+};
+template<class Integer, size_t ...Bits>
+using unsigned_saturation_mask_type_2 = typename unsigned_saturation_mask_type_2_impl<Integer, Bits...>::type;
+
+// TODO: Get rid of this
 #if __cpp_fold_expressions
 template<class ...OffsetAndMasks, class Integer>
 constexpr Integer make_unsigned_saturation_mask_var_len(Integer carrys, seq<OffsetAndMasks...>) {
@@ -414,49 +514,40 @@ constexpr Integer make_unsigned_saturation_mask_var_len(
 }
 #endif
 
-template<size_t Bits0, size_t ...Bits, class Integer>
-constexpr Integer dispatch_make_unsigned_saturation_mask(
-    Integer carrys, size_t_<0> /* all bits are the same */)
-{
-    return (carrys << 1) - (carrys >> (Bits0 - 1));
-}
-
 #if __cpp_fold_expressions
-template<size_t ...Bits, class Integer>
-constexpr Integer make_unsigned_saturation_mask_type_1(Integer carrys, integer_seq<Bits...>) {
-    return static_cast<Integer>((... | (carrys >> (Bits - 1))));
+template<class ...Masks, class Integer>
+constexpr Integer make_unsigned_saturation_mask_type_2(Integer carrys, seq<Masks...>) {
+    // Masks = seq<MaskSize, LoOrder Mask for MaskSize>
+    return (... |
+        ((carrys >> (take_1st<Masks>::value - 1)) & take_2nd<Masks>::value)
+    );
 }
 #else
 template<class Integer>
-constexpr Integer make_unsigned_saturation_mask_type_1(Integer carrys, seq<>) {
-    return 0;
-}
-template<size_t Bits0, size_t ...Bits, class Integer>
-constexpr Integer make_unsigned_saturation_mask_type_1(Integer carrys, integer_seq<Bits0, Bits...>) {
-    return static_cast<Integer>((carrys >> (Bits0 - 1))
-        | make_unsigned_saturation_mask_type_1(carrys, integer_seq<Bits...>()));
+constexpr Integer make_unsigned_saturation_mask_type_2(Integer /*carrys*/, seq<>) { return 0; }
+template<class Mask, class ...Masks, class Integer>
+constexpr Integer make_unsigned_saturation_mask_type_2(Integer carrys, seq<Mask, Masks...>) {
+    // Masks = seq<MaskSize, LoOrder Mask for MaskSize>
+    return static_cast<Integer>(((carrys >> (take_1st<Mask>::value - 1)) & take_2nd<Mask>::value) |
+        make_unsigned_saturation_mask_type_2(carrys, seq<Masks...>()));
 }
 #endif
-template<size_t ...Bits, class Integer>
-constexpr Integer dispatch_make_unsigned_saturation_mask(
-    Integer carrys, size_t_<1> /* packs of variable length (type 1) */)
-{
-    using loorder = mask_loorder<Integer, Bits...>;
-    return static_cast<Integer>((carrys << 1)
-        - (make_unsigned_saturation_mask_type_1(carrys, unique<integer_seq<Bits...>>()) & loorder::value));
-}
+
 template<size_t Bits0, size_t ...Bits, class Integer>
 constexpr Integer dispatch_make_unsigned_saturation_mask(
     Integer carrys, size_t_<2> /* packs of variable length (type 2) */)
 {
-    return make_unsigned_saturation_mask_var_len(carrys, offset_and_mask_vector<Bits0, Bits...>());
+    return make_unsigned_saturation_mask_type_2(carrys,
+        unsigned_saturation_mask_type_2<Integer, Bits0, Bits...>());
 }
 
 template<size_t Bits0, size_t ...Bits, class Integer>
 constexpr Integer make_unsigned_saturation_mask(Integer carrys)
 {
-    return dispatch_make_unsigned_saturation_mask<Bits0, Bits...>(
-        carrys, detect_saturation_mask_type<Integer, Bits0, Bits...>());
+    return static_cast<Integer>((carrys << 1) -
+        dispatch_make_unsigned_saturation_mask<Bits0, Bits...>(
+            carrys, detect_saturation_mask_type<Integer, Bits0, Bits...>())
+    );
 }
 
 /////////////////////////////////////////////////////////////////////
