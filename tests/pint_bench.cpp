@@ -221,6 +221,95 @@ uint32_t AddUnsignedSaturationUsingUnion(const TestVector &numbers) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+uint32_t AddUnsignedSaturationUsingPint_Type1(const TestVector &numbers) {
+    using PackedInt = pint::packed_int<uint32_t,1,3,5,11>;
+
+    uint32_t sum = 0;
+    for (auto &pair : numbers)
+        sum += pint::add_unsigned_saturate(PackedInt(pair.first), PackedInt(pair.second)).value();
+
+    return sum;
+}
+
+uint32_t AddUnsignedSaturationUsingUnion_Type1(const TestVector &numbers) {
+    union SumUnion {
+        struct {
+            uint32_t a: 1;
+            uint32_t c: 3;
+            uint32_t e: 5;
+            uint32_t g: 11;
+        };
+
+        uint32_t value;
+    };
+
+    uint32_t sum = 0;
+    for (auto &pair : numbers) {
+        SumUnion a,b,c;
+
+        a.value = pair.first;
+        b.value = pair.second;
+        c.value = 0;
+
+        c.a = a.a + b.a;
+        if (c.a < a.a && c.a < b.a) c.a = 1;
+
+        c.c = a.c + b.c;
+        if (c.c < a.c && c.c < b.c) c.c = 7;
+
+        c.e = a.e + b.e;
+        if (c.e < a.e && c.e < b.e) c.e = 31;
+
+        c.g = a.g + b.g;
+        if (c.g < a.g && c.g < b.g) c.g = 2047;
+
+        sum += c.value;
+    }
+
+    return sum;
+}
+
+template<size_t bits>
+uint32_t uclamp(uint32_t value) {
+    static const uint32_t kMaxv = (1 << bits) - 1;
+
+    if (value > kMaxv) return kMaxv;
+    return value;
+}
+
+uint32_t AddUnsignedSaturationUsingUnion_Type1_Clamp(const TestVector &numbers) {
+    union SumUnion {
+        struct {
+            uint32_t a: 1;
+            uint32_t c: 3;
+            uint32_t e: 5;
+            uint32_t g: 11;
+        };
+
+        uint32_t value;
+    };
+
+    uint32_t sum = 0;
+    for (auto &pair : numbers) {
+        SumUnion a,b,c;
+
+        a.value = pair.first;
+        b.value = pair.second;
+        c.value = 0;
+
+        c.a = uclamp<1>(a.a + b.a);
+        c.c = uclamp<3>(a.c + b.c);
+        c.e = uclamp<5>(a.e + b.e);
+        c.g = uclamp<11>(a.g + b.g);
+
+        sum += c.value;
+    }
+
+    return sum;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 template<size_t bits>
 int32_t clamp(int32_t value) {
     static const int32_t kMinv = static_cast<uint32_t>(~0) << (bits - 1);
@@ -342,11 +431,15 @@ int main() {
         { AddUnsignedSaturationUsingPint, "pint    |add|sat/u" },
         { AddUnsignedSaturationUsingUnion,"union   |add|sat/u" },
 
+        { AddUnsignedSaturationUsingPint_Type1, "pint/1  |add|sat/u" },
+        { AddUnsignedSaturationUsingUnion_Type1,"union/1 |add|sat/u" },
+        { AddUnsignedSaturationUsingUnion_Type1_Clamp,"union/1c|add|sat/u" },
+
         { AddSignedSaturationUsingPint, "pint    |add|sat/s" },
         { AddSignedSaturationUsingUnion,"union   |add|sat/s" },
 
-        { AddSignedSaturationUsingPint2, "pint/eq |add|sat/s" },
-        { AddSignedSaturationUsingUnion2,"union/eq|add|sat/s" },
+        { AddSignedSaturationUsingPint2, "pint/0  |add|sat/s" },
+        { AddSignedSaturationUsingUnion2,"union/0 |add|sat/s" },
 
         { SubWrapUsingPint,        "pint    |sub|wrap " },
         { SubWrapUsingUnion,       "union   |sub|wrap " },

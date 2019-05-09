@@ -53,6 +53,48 @@ struct prepend_seq_impl<T, seq<Types...>> {
 template<class T, class Seq>
 using prepend_seq = typename prepend_seq_impl<T, Seq>::type;
 
+// Append type to sequence
+template<class T, class Seq> struct append_seq_impl;
+template<class T, class ...Types>
+struct append_seq_impl<T, seq<Types...>> {
+    using type = seq<Types..., T>;
+};
+
+template<class T, class Seq>
+using append_seq = typename append_seq_impl<T, Seq>::type;
+
+// Inherit from given classes
+template<class ...Types> struct inherit : Types... {};
+
+// Check if type is in set (set is a sequence with all elements unique)
+template<class Type, class Seq> struct in_set_impl;
+template<class Type, class ...Types>
+struct in_set_impl<Type, seq<Types...>> {
+    static std::true_type deduce(identity<Type>);
+    static std::false_type deduce(...);
+
+    using set = inherit<identity<Types>...>;
+    using type = decltype(deduce(set()));
+};
+template<class Type, class Seq>
+using in_set = typename in_set_impl<Type, Seq>::type;
+
+// Remove duplicated elements from seq
+template<class Seq, class State = seq<>> struct unique_impl;
+template<class Type, class ...Types, class State>
+struct unique_impl<seq<Type, Types...>, State> {
+    using NewState = typename std::conditional<
+        in_set<Type, State>::value,
+        State,
+        append_seq<Type, State>
+    >::type;
+    using type = typename unique_impl<seq<Types...>, NewState>::type;
+};
+template<class State>
+struct unique_impl<seq<>, State> { using type = State; };
+template<class Seq>
+using unique = typename unique_impl<Seq>::type;
+
 // Take first element from sequence
 template<class Seq> struct take_1st_impl;
 template<class First, class ...Others>
@@ -240,6 +282,11 @@ template<class T> struct all_ones<T, 64> {
     static const T value = static_cast<T>(~0ULL);
 };
 
+// Calculate number set bits in value
+template<uint64_t number>
+struct bit_count : size_t_<1 + bit_count<number & (number - 1)>::value> {};
+template<> struct bit_count<0> : size_t_<0> {};
+
 // Make sequence of pairs <offset of mask, mask length>
 template<size_t... Bits>
 using offset_and_mask_vector = zip<
@@ -298,6 +345,51 @@ constexpr Integer make_truncated_int(seq<MasksAndOffsets...>, Integer value0, Va
 // Make unsigned saturation mask
 // For example if carry vector is | 100 | 0000 | 100000 | 10 | 000 |, function returns
 //                                | 111 | 0000 | 111111 | 11 | 000 |
+
+// First detect how saturation mask is calculated from carry-out vector.
+// There are 3 possible options:
+// 1. If all bits in packed integer are the same, then saturation mask is
+//    (carry << 1) - (carry >> (Bits0 - 1))
+// 2. If bitcount((mask_hiorder >> (Bits0 - 1)) & mask_loorder)
+//     + bitcount((mask_hiorder >> (Bits1 - 1)) & mask_loorder)
+//     + ... == sizeof...(Bits), where all Bits are unique,
+//    then saturation mask is (carry << 1) - (((carry >> (Bits0 - 1)) | (carry >> (Bits1 - 1)) | ...) & mask_loorder)
+// 3. ...
+
+template<class Integer, Integer hiorder, Integer loorder, class UniqueBitsSeq>
+struct is_saturation_mask_of_type_1_helper;
+template<class Integer, Integer hiorder, Integer loorder, size_t ...Bits>
+struct is_saturation_mask_of_type_1_helper<Integer, hiorder, loorder, integer_seq<Bits...>> {
+    static const size_t value = sum<
+        bit_count<(hiorder >> (Bits - 1)) & loorder>::value...
+    >::value;
+};
+
+template<class Integer, size_t ...Bits>
+struct is_saturation_mask_of_type_1 {
+    static const Integer hiorder = mask_hiorder<Integer, Bits...>::value;
+    static const Integer loorder = mask_loorder<Integer, Bits...>::value;
+    using unique_bits = unique<integer_seq<Bits...>>;
+
+    static const bool value = sizeof...(Bits) == is_saturation_mask_of_type_1_helper<
+        Integer, hiorder, loorder, unique_bits>::value;
+};
+
+template<class Integer, size_t ...Bits>
+struct detect_saturation_mask_type_impl {
+    using type = typename std::conditional<
+        all_same<integer_seq<Bits...>>::value,
+        size_t_<0>,
+        typename std::conditional<
+            is_saturation_mask_of_type_1<Integer, Bits...>::value,
+            size_t_<1>,
+            size_t_<2>
+        >::type
+    >::type;
+};
+template<class Integer, size_t ...Bits>
+using detect_saturation_mask_type = typename detect_saturation_mask_type_impl<Integer, Bits...>::type;
+
 #if __cpp_fold_expressions
 template<class ...OffsetAndMasks, class Integer>
 constexpr Integer make_unsigned_saturation_mask_var_len(Integer carrys, seq<OffsetAndMasks...>) {
@@ -324,13 +416,38 @@ constexpr Integer make_unsigned_saturation_mask_var_len(
 
 template<size_t Bits0, size_t ...Bits, class Integer>
 constexpr Integer dispatch_make_unsigned_saturation_mask(
-    Integer carrys, std::true_type /* all bits are the same */)
+    Integer carrys, size_t_<0> /* all bits are the same */)
 {
     return (carrys << 1) - (carrys >> (Bits0 - 1));
 }
+
+#if __cpp_fold_expressions
+template<size_t ...Bits, class Integer>
+constexpr Integer make_unsigned_saturation_mask_type_1(Integer carrys, integer_seq<Bits...>) {
+    return static_cast<Integer>((... | (carrys >> (Bits - 1))));
+}
+#else
+template<class Integer>
+constexpr Integer make_unsigned_saturation_mask_type_1(Integer carrys, seq<>) {
+    return 0;
+}
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr Integer make_unsigned_saturation_mask_type_1(Integer carrys, integer_seq<Bits0, Bits...>) {
+    return static_cast<Integer>((carrys >> (Bits0 - 1))
+        | make_unsigned_saturation_mask_type_1(carrys, integer_seq<Bits...>()));
+}
+#endif
+template<size_t ...Bits, class Integer>
+constexpr Integer dispatch_make_unsigned_saturation_mask(
+    Integer carrys, size_t_<1> /* packs of variable length (type 1) */)
+{
+    using loorder = mask_loorder<Integer, Bits...>;
+    return static_cast<Integer>((carrys << 1)
+        - (make_unsigned_saturation_mask_type_1(carrys, unique<integer_seq<Bits...>>()) & loorder::value));
+}
 template<size_t Bits0, size_t ...Bits, class Integer>
 constexpr Integer dispatch_make_unsigned_saturation_mask(
-    Integer carrys, std::false_type /* packs of variable length */)
+    Integer carrys, size_t_<2> /* packs of variable length (type 2) */)
 {
     return make_unsigned_saturation_mask_var_len(carrys, offset_and_mask_vector<Bits0, Bits...>());
 }
@@ -339,7 +456,7 @@ template<size_t Bits0, size_t ...Bits, class Integer>
 constexpr Integer make_unsigned_saturation_mask(Integer carrys)
 {
     return dispatch_make_unsigned_saturation_mask<Bits0, Bits...>(
-        carrys, all_same<integer_seq<Bits0, Bits...>>());
+        carrys, detect_saturation_mask_type<Integer, Bits0, Bits...>());
 }
 
 /////////////////////////////////////////////////////////////////////
