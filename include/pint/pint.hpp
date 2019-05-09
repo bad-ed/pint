@@ -483,6 +483,9 @@ public:
 
     constexpr value_type value() const { return m_value; }
 
+    bool operator==(packed_int other) const { return m_value == other.m_value; }
+    bool operator!=(packed_int other) const { return m_value != other.m_value; }
+
 private:
     value_type m_value;
 };

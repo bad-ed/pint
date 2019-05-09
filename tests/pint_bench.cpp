@@ -353,7 +353,7 @@ int main() {
     };
 
     std::cout << "Generating random pairs\n";
-    auto random_pairs = GetRandomPairs(100'000'000);
+    auto random_pairs = GetRandomPairs(100000000);
 
     for (auto &bench_info : kTests)
     {

@@ -1,5 +1,59 @@
+#include <array>
+#include <utility>
+
 #include <gtest/gtest.h>
 #include "pint/pint.hpp"
+
+#if __cpp_lib_integer_sequence
+template<size_t ...Indexes> using IndexSeq = std::index_sequence<Indexes...>;
+template<size_t N> using MakeIndexSeq = std::make_index_sequence<N>;
+#else
+template<size_t ...Indexes> using IndexSeq = pint::detail::integer_seq<Indexes...>;
+template<size_t N, class IntegerSeq> struct Increase;
+template<size_t N, size_t ...Values>
+struct Increase<N, pint::detail::integer_seq<Values...>> {
+    using type = pint::detail::integer_seq<(Values + N)...>;
+};
+template<size_t N>
+struct MakeIndexSeqImpl {
+    using L1 = typename MakeIndexSeqImpl<N / 2>::type;
+    using L2 = typename Increase<N / 2, L1>::type;
+    using L3 = pint::detail::repeat<pint::detail::size_t_<N-1>, N % 2>;
+
+    using type = pint::detail::concat<
+        pint::detail::concat<L1, L2>, L3
+    >;
+};
+template<> struct MakeIndexSeqImpl<0> { using type = pint::detail::seq<>; };
+template<size_t N>
+using MakeIndexSeq = typename MakeIndexSeqImpl<N>::type;
+#endif
+
+template<class Integer, class PackedInt, size_t ...Indexes>
+std::array<Integer, sizeof...(Indexes)>
+    ToArrayHelper(PackedInt value, IndexSeq<Indexes...>)
+{
+    return std::array<Integer, sizeof...(Indexes)>{pint::get<Indexes>(value)...};
+}
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+std::array<Integer, sizeof...(Bits) + 1>
+    ToArray(pint::packed_int<Integer, Bits0, Bits...> value)
+{
+    return ToArrayHelper<Integer>(value, MakeIndexSeq<sizeof...(Bits)+1>());
+}
+
+namespace pint {
+template<size_t Bits0, size_t ...Bits, class Integer>
+void PrintTo(packed_int<Integer, Bits0, Bits...> value, std::ostream* os) {
+    const auto packed_values = ToArray(value);
+
+    *os << value.value() << '{' << packed_values[0];
+    for (size_t i = 1; i < packed_values.size(); ++i)
+        *os << ',' << packed_values[i];
+    *os << '}';
+}
+} // namespace pint
 
 TEST(TestMakeTruncate, InputWithoutOverflow)
 {
@@ -57,7 +111,7 @@ TEST(TestSlice, Slice) {
     static_assert(std::is_same<std::decay<decltype(sliced)>::type, SlicedInt>::value,
         "Wrong type of sliced value");
 
-    ASSERT_EQ(sliced.value(), SlicedInt(3,4).value());
+    ASSERT_EQ(sliced, SlicedInt(3,4));
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -70,7 +124,7 @@ TEST(TestAddWrap, NoOverflow) {
 
     constexpr auto expected_sum = PackedInt(1 + 3, 20 + 2, 10 + 1);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_wrap(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_wrap(a, b));
 }
 
 TEST(TestAddWrap, WithOverflow) {
@@ -81,7 +135,7 @@ TEST(TestAddWrap, WithOverflow) {
 
     constexpr auto expected_sum = PackedInt(31 + 1, 60 + 20, 10 + 27);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_wrap(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_wrap(a, b));
 }
 
 TEST(TestAddWrap, WithOverflow2) {
@@ -92,7 +146,7 @@ TEST(TestAddWrap, WithOverflow2) {
 
     constexpr auto expected_sum = PackedInt(3 + 5, 4 + 6, 5 + 7);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_wrap(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_wrap(a, b));
 }
 
 TEST(TestAddWrap, WithOverflow_1BitPacks) {
@@ -103,7 +157,7 @@ TEST(TestAddWrap, WithOverflow_1BitPacks) {
 
     constexpr auto expected_sum = PackedInt(1,0,0);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_wrap(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_wrap(a, b));
 }
 
 TEST(TestAddUnsignedSaturate, EqualLength_NoOverflow) {
@@ -114,7 +168,7 @@ TEST(TestAddUnsignedSaturate, EqualLength_NoOverflow) {
 
     constexpr auto expected_sum = PackedInt(1 + 2, 2 + 3, 3 + 4);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_unsigned_saturate(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_unsigned_saturate(a, b));
 }
 
 TEST(TestAddUnsignedSaturate, EqualLength_WithOverflow) {
@@ -126,7 +180,7 @@ TEST(TestAddUnsignedSaturate, EqualLength_WithOverflow) {
     // 1 + 7 == 8 saturates to 7, 3 + 6 == 9 saturates to 7
     constexpr auto expected_sum = PackedInt(7,6,7);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_unsigned_saturate(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_unsigned_saturate(a, b));
 }
 
 TEST(TestAddUnsignedSaturate, EqualLength_WithOverflow_1BitPacks) {
@@ -137,7 +191,7 @@ TEST(TestAddUnsignedSaturate, EqualLength_WithOverflow_1BitPacks) {
 
     constexpr auto expected_sum = PackedInt(1,0,1);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_unsigned_saturate(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_unsigned_saturate(a, b));
 }
 
 TEST(TestAddUnsignedSaturate, VarLength_WithOverflow) {
@@ -149,7 +203,7 @@ TEST(TestAddUnsignedSaturate, VarLength_WithOverflow) {
     // 1 + 7 == 8 saturates to 7, 3 + 6 == 9 saturates to 7
     constexpr auto expected_sum = PackedInt(7,6,7);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_unsigned_saturate(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_unsigned_saturate(a, b));
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -162,7 +216,7 @@ TEST(TestAddSignedSaturate, EqualLength_Positive_NoOverflow) {
 
     constexpr auto expected_sum = PackedInt(1 + 2, 2 + 3, 3 + 4);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_signed_saturate(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_signed_saturate(a, b));
 }
 
 TEST(TestAddSignedSaturate, EqualLength_Negative_NoOverflow) {
@@ -173,7 +227,7 @@ TEST(TestAddSignedSaturate, EqualLength_Negative_NoOverflow) {
 
     constexpr auto expected_sum = PackedInt(-1 + -2, -2 + -3, -3 + -4);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_signed_saturate(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_signed_saturate(a, b));
 }
 
 TEST(TestAddSignedSaturate, EqualLength_PositiveNegative_NoOverflow) {
@@ -184,7 +238,7 @@ TEST(TestAddSignedSaturate, EqualLength_PositiveNegative_NoOverflow) {
 
     constexpr auto expected_sum = PackedInt(1 + -2, -2 + 3, 3 + -4);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_signed_saturate(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_signed_saturate(a, b));
 }
 
 TEST(TestAddSignedSaturate, EqualLength_Positive_Overflow) {
@@ -195,7 +249,7 @@ TEST(TestAddSignedSaturate, EqualLength_Positive_Overflow) {
 
     constexpr auto expected_sum = PackedInt(7, 6, 7);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_signed_saturate(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_signed_saturate(a, b));
 }
 
 TEST(TestAddSignedSaturate, EqualLength_Negative_Overflow) {
@@ -206,7 +260,7 @@ TEST(TestAddSignedSaturate, EqualLength_Negative_Overflow) {
 
     constexpr auto expected_sum = PackedInt(-8, -6, -8);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_signed_saturate(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_signed_saturate(a, b));
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -219,7 +273,7 @@ TEST(TestAddSignedSaturate, VarLength_Positive_NoOverflow) {
 
     constexpr auto expected_sum = PackedInt(1 + 2, 2 + 3, 3 + 4);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_signed_saturate(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_signed_saturate(a, b));
 }
 
 TEST(TestAddSignedSaturate, VarLength_Negative_NoOverflow) {
@@ -230,7 +284,7 @@ TEST(TestAddSignedSaturate, VarLength_Negative_NoOverflow) {
 
     constexpr auto expected_sum = PackedInt(-1 + -2, -2 + -3, -3 + -4);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_signed_saturate(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_signed_saturate(a, b));
 }
 
 TEST(TestAddSignedSaturate, VarLength_PositiveNegative_NoOverflow) {
@@ -241,7 +295,7 @@ TEST(TestAddSignedSaturate, VarLength_PositiveNegative_NoOverflow) {
 
     constexpr auto expected_sum = PackedInt(1 + -2, -2 + 3, 3 + -4);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_signed_saturate(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_signed_saturate(a, b));
 }
 
 TEST(TestAddSignedSaturate, VarLength_Positive_Overflow) {
@@ -252,7 +306,7 @@ TEST(TestAddSignedSaturate, VarLength_Positive_Overflow) {
 
     constexpr auto expected_sum = PackedInt(7, 15, 7);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_signed_saturate(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_signed_saturate(a, b));
 }
 
 TEST(TestAddSignedSaturate, VarLength_Negative_Overflow) {
@@ -263,7 +317,7 @@ TEST(TestAddSignedSaturate, VarLength_Negative_Overflow) {
 
     constexpr auto expected_sum = PackedInt(-8, -16, -8);
 
-    ASSERT_EQ(expected_sum.value(), pint::add_signed_saturate(a, b).value());
+    ASSERT_EQ(expected_sum, pint::add_signed_saturate(a, b));
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -276,7 +330,7 @@ TEST(TestSubWrap, NoOverflow) {
 
     constexpr auto expected_diff = PackedInt(4 - 3, 20 - 2, 10 - 1);
 
-    ASSERT_EQ(expected_diff.value(), pint::sub_wrap(a, b).value());
+    ASSERT_EQ(expected_diff, pint::sub_wrap(a, b));
 }
 
 TEST(TestSubWrap, NoOverflow2) {
@@ -287,7 +341,7 @@ TEST(TestSubWrap, NoOverflow2) {
 
     constexpr auto expected_diff = PackedInt(7 - 1, 6 - 2, 5 - 3);
 
-    ASSERT_EQ(expected_diff.value(), pint::sub_wrap(a, b).value());
+    ASSERT_EQ(expected_diff, pint::sub_wrap(a, b));
 }
 
 TEST(TestSubWrap, NoOverflow_1BitPacks) {
@@ -298,7 +352,7 @@ TEST(TestSubWrap, NoOverflow_1BitPacks) {
 
     constexpr auto expected_diff = PackedInt(1 - 1, 1 - 0, 0 - 0);
 
-    ASSERT_EQ(expected_diff.value(), pint::sub_wrap(a, b).value());
+    ASSERT_EQ(expected_diff, pint::sub_wrap(a, b));
 }
 
 TEST(TestSubWrap, WithOverflow) {
@@ -309,7 +363,7 @@ TEST(TestSubWrap, WithOverflow) {
 
     constexpr auto expected_diff = PackedInt(1 - 7, 4 - 2, 2 - 6);
 
-    ASSERT_EQ(expected_diff.value(), pint::sub_wrap(a, b).value());
+    ASSERT_EQ(expected_diff, pint::sub_wrap(a, b));
 }
 
 TEST(TestSubWrap, WithOverflow_1BitPacks) {
@@ -320,7 +374,7 @@ TEST(TestSubWrap, WithOverflow_1BitPacks) {
 
     constexpr auto expected_diff = PackedInt(1 - 1, 0 - 1, 0 - 0);
 
-    ASSERT_EQ(expected_diff.value(), pint::sub_wrap(a, b).value());
+    ASSERT_EQ(expected_diff, pint::sub_wrap(a, b));
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -333,7 +387,7 @@ TEST(TestSubUnsignedSaturate, NoOverflow) {
 
     constexpr auto expected_diff = PackedInt(4 - 3, 20 - 2, 10 - 1);
 
-    ASSERT_EQ(expected_diff.value(), pint::sub_unsigned_saturate(a, b).value());
+    ASSERT_EQ(expected_diff, pint::sub_unsigned_saturate(a, b));
 }
 
 TEST(TestSubUnsignedSaturate, WithOverflow) {
@@ -344,7 +398,7 @@ TEST(TestSubUnsignedSaturate, WithOverflow) {
 
     constexpr auto expected_diff = PackedInt(1, 0, 0);
 
-    ASSERT_EQ(expected_diff.value(), pint::sub_unsigned_saturate(a, b).value());
+    ASSERT_EQ(expected_diff, pint::sub_unsigned_saturate(a, b));
 }
 
 TEST(TestSubUnsignedSaturate, WithOverflow_1BitPacks) {
@@ -355,7 +409,7 @@ TEST(TestSubUnsignedSaturate, WithOverflow_1BitPacks) {
 
     constexpr auto expected_diff = PackedInt(0, 0, 0);
 
-    ASSERT_EQ(expected_diff.value(), pint::sub_unsigned_saturate(a, b).value());
+    ASSERT_EQ(expected_diff, pint::sub_unsigned_saturate(a, b));
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -368,7 +422,7 @@ TEST(TestSubSignedSaturate, Positive_NoOverflow) {
 
     constexpr auto expected_diff = PackedInt(4 - 3, 20 - 2, 10 - 1);
 
-    ASSERT_EQ(expected_diff.value(), pint::sub_signed_saturate(a, b).value());
+    ASSERT_EQ(expected_diff, pint::sub_signed_saturate(a, b));
 }
 
 TEST(TestSubSignedSaturate, Negative_NoOverflow) {
@@ -379,7 +433,7 @@ TEST(TestSubSignedSaturate, Negative_NoOverflow) {
 
     constexpr auto expected_diff = PackedInt(-4 - -3, -20 - -2, -10 - -1);
 
-    ASSERT_EQ(expected_diff.value(), pint::sub_signed_saturate(a, b).value());
+    ASSERT_EQ(expected_diff, pint::sub_signed_saturate(a, b));
 }
 
 TEST(TestSubSignedSaturate, PositiveNegativeOverflow) {
@@ -390,7 +444,7 @@ TEST(TestSubSignedSaturate, PositiveNegativeOverflow) {
 
     constexpr auto expected_diff = PackedInt(7, 31, 6);
 
-    ASSERT_EQ(expected_diff.value(), pint::sub_signed_saturate(a, b).value());
+    ASSERT_EQ(expected_diff, pint::sub_signed_saturate(a, b));
 }
 
 TEST(TestSubSignedSaturate, NegativePositiveOverflow) {
@@ -401,7 +455,7 @@ TEST(TestSubSignedSaturate, NegativePositiveOverflow) {
 
     constexpr auto expected_diff = PackedInt(-8, -32, -7);
 
-    ASSERT_EQ(expected_diff.value(), pint::sub_signed_saturate(a, b).value());
+    ASSERT_EQ(expected_diff, pint::sub_signed_saturate(a, b));
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -414,7 +468,7 @@ TEST(TestMinUnsigned, AllFirstLessThanSecond) {
 
     constexpr auto expected_min = PackedInt(1,2,3);
 
-    ASSERT_EQ(expected_min.value(), pint::min_unsigned(a,b).value());
+    ASSERT_EQ(expected_min, pint::min_unsigned(a,b));
 }
 
 TEST(TestMinUnsigned, AllSecondLessThanFirst) {
@@ -425,7 +479,7 @@ TEST(TestMinUnsigned, AllSecondLessThanFirst) {
 
     constexpr auto expected_min = PackedInt(1,2,3);
 
-    ASSERT_EQ(expected_min.value(), pint::min_unsigned(a,b).value());
+    ASSERT_EQ(expected_min, pint::min_unsigned(a,b));
 }
 
 TEST(TestMinUnsigned, Interleaved) {
@@ -436,7 +490,7 @@ TEST(TestMinUnsigned, Interleaved) {
 
     constexpr auto expected_min = PackedInt(1,5,3);
 
-    ASSERT_EQ(expected_min.value(), pint::min_unsigned(a,b).value());
+    ASSERT_EQ(expected_min, pint::min_unsigned(a,b));
 }
 
 TEST(TestMaxUnsigned, AllFirstLessThanSecond) {
@@ -447,7 +501,7 @@ TEST(TestMaxUnsigned, AllFirstLessThanSecond) {
 
     constexpr auto expected_max = PackedInt(4,5,15);
 
-    ASSERT_EQ(expected_max.value(), pint::max_unsigned(a,b).value());
+    ASSERT_EQ(expected_max, pint::max_unsigned(a,b));
 }
 
 TEST(TestMaxUnsigned, AllSecondLessThanFirst) {
@@ -458,7 +512,7 @@ TEST(TestMaxUnsigned, AllSecondLessThanFirst) {
 
     constexpr auto expected_max = PackedInt(4,5,15);
 
-    ASSERT_EQ(expected_max.value(), pint::max_unsigned(a,b).value());
+    ASSERT_EQ(expected_max, pint::max_unsigned(a,b));
 }
 
 TEST(TestMaxUnsigned, Interleaved) {
@@ -469,5 +523,5 @@ TEST(TestMaxUnsigned, Interleaved) {
 
     constexpr auto expected_max = PackedInt(4,15,3);
 
-    ASSERT_EQ(expected_max.value(), pint::max_unsigned(a,b).value());
+    ASSERT_EQ(expected_max, pint::max_unsigned(a,b));
 }
