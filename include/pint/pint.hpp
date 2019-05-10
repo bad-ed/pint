@@ -628,8 +628,12 @@ public:
 
     constexpr value_type value() const { return m_value; }
 
-    bool operator==(packed_int other) const { return m_value == other.m_value; }
-    bool operator!=(packed_int other) const { return m_value != other.m_value; }
+    constexpr bool operator==(packed_int other) const { return m_value == other.m_value; }
+    constexpr bool operator!=(packed_int other) const { return m_value != other.m_value; }
+
+    constexpr packed_int operator|(packed_int other) const { return packed_int(m_value | other.m_value); }
+    constexpr packed_int operator&(packed_int other) const { return packed_int(m_value & other.m_value); }
+    constexpr packed_int operator^(packed_int other) const { return packed_int(m_value ^ other.m_value); }
 
 private:
     value_type m_value;
