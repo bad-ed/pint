@@ -814,4 +814,42 @@ constexpr packed_int<Integer, Bits0, Bits...> max_unsigned(
     );
 }
 
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr packed_int<Integer, Bits0, Bits...> min_signed(
+    packed_int<Integer, Bits0, Bits...> a,
+    packed_int<Integer, Bits0, Bits...> b) noexcept
+{
+    using hi_order_bits_mask = detail::mask_hiorder<Integer, Bits0, Bits...>;
+    return packed_int<Integer, Bits0, Bits...>(
+        detail::interleave(a.value(), b.value(),
+            static_cast<Integer>(
+                detail::make_unsigned_saturation_mask<Bits0, Bits...>(
+                    detail::carry_sub_vector(
+                        a.value() ^ hi_order_bits_mask::value,
+                        b.value() ^ hi_order_bits_mask::value
+                    ) & hi_order_bits_mask::value)
+            )
+        )
+    );
+}
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr packed_int<Integer, Bits0, Bits...> max_signed(
+    packed_int<Integer, Bits0, Bits...> a,
+    packed_int<Integer, Bits0, Bits...> b) noexcept
+{
+    using hi_order_bits_mask = detail::mask_hiorder<Integer, Bits0, Bits...>;
+    return packed_int<Integer, Bits0, Bits...>(
+        detail::interleave(a.value(), b.value(),
+            static_cast<Integer>(
+                detail::make_unsigned_saturation_mask<Bits0, Bits...>(
+                    detail::carry_sub_vector(
+                        b.value() ^ hi_order_bits_mask::value,
+                        a.value() ^ hi_order_bits_mask::value
+                    ) & hi_order_bits_mask::value)
+            )
+        )
+    );
+}
+
 } // namespace pint

@@ -525,3 +525,71 @@ TEST(TestMaxUnsigned, Interleaved) {
 
     ASSERT_EQ(expected_max, pint::max_unsigned(a,b));
 }
+
+//////////////////////////////////////////////////////////////////////////////
+
+TEST(TestMinSigned, NegativeNegative) {
+    using PackedInt = pint::make_packed_int<4,6,4>;
+
+    constexpr auto a = PackedInt(-1,-5,0);
+    constexpr auto b = PackedInt(-4,-2,-8);
+
+    constexpr auto expected_min = PackedInt(-4,-5,-8);
+
+    ASSERT_EQ(expected_min, pint::min_signed(a,b));
+}
+
+TEST(TestMinSigned, PositivePositive) {
+    using PackedInt = pint::make_packed_int<4,6,4>;
+
+    constexpr auto a = PackedInt(1,5,0);
+    constexpr auto b = PackedInt(4,2,7);
+
+    constexpr auto expected_min = PackedInt(1,2,0);
+
+    ASSERT_EQ(expected_min, pint::min_signed(a,b));
+}
+
+TEST(TestMinSigned, PositiveNegative) {
+    using PackedInt = pint::make_packed_int<4,6,4>;
+
+    constexpr auto a = PackedInt(-1,5,0);
+    constexpr auto b = PackedInt(4,-2,7);
+
+    constexpr auto expected_min = PackedInt(-1,-2,0);
+
+    ASSERT_EQ(expected_min, pint::min_signed(a,b));
+}
+
+TEST(TestMaxSigned, NegativeNegative) {
+    using PackedInt = pint::make_packed_int<4,6,4>;
+
+    constexpr auto a = PackedInt(-1,-5,0);
+    constexpr auto b = PackedInt(-4,-2,-8);
+
+    constexpr auto expected_max = PackedInt(-1,-2,0);
+
+    ASSERT_EQ(expected_max, pint::max_signed(a,b));
+}
+
+TEST(TestMaxSigned, PositivePositive) {
+    using PackedInt = pint::make_packed_int<4,6,4>;
+
+    constexpr auto a = PackedInt(1,5,0);
+    constexpr auto b = PackedInt(4,2,7);
+
+    constexpr auto expected_max = PackedInt(4,5,7);
+
+    ASSERT_EQ(expected_max, pint::max_signed(a,b));
+}
+
+TEST(TestMaxSigned, PositiveNegative) {
+    using PackedInt = pint::make_packed_int<4,6,4>;
+
+    constexpr auto a = PackedInt(-1,5,0);
+    constexpr auto b = PackedInt(4,-2,7);
+
+    constexpr auto expected_max = PackedInt(4,5,7);
+
+    ASSERT_EQ(expected_max, pint::max_signed(a,b));
+}
