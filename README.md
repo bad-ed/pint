@@ -1,5 +1,7 @@
 # 🍺 Pint
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/0a179e1d68c343bb9d9d4d12756f5b8e)](https://app.codacy.com/app/bad-ed/pint?utm_source=github.com&utm_medium=referral&utm_content=bad-ed/pint&utm_campaign=Badge_Grade_Settings)
+
 Header-only library for packed integers manipulations. Library provides a set of functions for adding/subtracting/etc... of packed integers in high-performance manner (most of functions are branch-free).
 
 ## Requirements
