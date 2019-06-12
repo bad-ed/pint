@@ -594,7 +594,28 @@ constexpr Integer interleave(Integer a, Integer b, Integer mask) {
     return (a & mask) | (b & ~mask);
 }
 
-template<size_t RequiredBits> struct find_appropriate_int;
+// Closest power of 2 of given number (rounded up)
+template<size_t NumberMinus1, size_t ShiftAmount = sizeof(size_t) * 8 / 2>
+struct clp2
+{
+    static const size_t value = clp2<
+        NumberMinus1 | (NumberMinus1 >> ShiftAmount),
+        ShiftAmount / 2>::value;
+};
+
+template<size_t NumberMinus1>
+struct clp2<NumberMinus1, 0>
+{
+    static const size_t value = NumberMinus1 + 1;
+};
+
+template<size_t RequiredBits>
+struct find_appropriate_int
+{
+    static_assert(!std::is_same<size_t_<RequiredBits>, size_t_<RequiredBits>>::value,
+        "Requested amount of bits is not supported");
+};
+
 template<> struct find_appropriate_int<8> { using type = uint8_t; };
 template<> struct find_appropriate_int<16> { using type = uint16_t; };
 template<> struct find_appropriate_int<32> { using type = uint32_t; };
@@ -656,7 +677,7 @@ private:
 template<size_t Bits0, size_t ...Bits>
 using make_packed_int = packed_int<
     typename detail::find_appropriate_int<
-        (detail::sum<Bits0, Bits...>::value + 7) & ~7
+        (detail::clp2<detail::sum<Bits0, Bits...>::value - 1>::value + 7) & ~7
     >::type,
     Bits0, Bits...
 >;

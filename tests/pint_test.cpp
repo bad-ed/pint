@@ -55,6 +55,37 @@ void PrintTo(packed_int<Integer, Bits0, Bits...> value, std::ostream* os) {
 }
 } // namespace pint
 
+template<size_t BitsSum>
+using MakePackedIntValueType = typename pint::make_packed_int<BitsSum>::value_type;
+
+static_assert(std::is_same<MakePackedIntValueType<1>, uint8_t>::value,
+    "Value type must be uint8_t");
+static_assert(std::is_same<MakePackedIntValueType<7>, uint8_t>::value,
+    "Value type must be uint8_t");
+static_assert(std::is_same<MakePackedIntValueType<8>, uint8_t>::value,
+    "Value type must be uint8_t");
+
+static_assert(std::is_same<MakePackedIntValueType<9>, uint16_t>::value,
+    "Value type must be uint16_t");
+static_assert(std::is_same<MakePackedIntValueType<15>, uint16_t>::value,
+    "Value type must be uint16_t");
+static_assert(std::is_same<MakePackedIntValueType<16>, uint16_t>::value,
+    "Value type must be uint16_t");
+
+static_assert(std::is_same<MakePackedIntValueType<17>, uint32_t>::value,
+    "Value type must be uint32_t");
+static_assert(std::is_same<MakePackedIntValueType<31>, uint32_t>::value,
+    "Value type must be uint32_t");
+static_assert(std::is_same<MakePackedIntValueType<32>, uint32_t>::value,
+    "Value type must be uint32_t");
+
+static_assert(std::is_same<MakePackedIntValueType<33>, uint64_t>::value,
+    "Value type must be uint64_t");
+static_assert(std::is_same<MakePackedIntValueType<63>, uint64_t>::value,
+    "Value type must be uint64_t");
+static_assert(std::is_same<MakePackedIntValueType<64>, uint64_t>::value,
+    "Value type must be uint64_t");
+
 TEST(TestMakeTruncate, InputWithoutOverflow)
 {
     using PackedInt = pint::make_packed_int<5, 6, 5>;
