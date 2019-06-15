@@ -368,6 +368,48 @@ constexpr auto b = MyPack(4,-2,7);
 max_signed(a, b); // == MyPack(4,5,7)
 ```
 
+### Shifting
+
+#### shift_left
+
+```cpp
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr packed_int<Integer, Bits0, Bits...> shift_left(
+    packed_int<Integer, Bits0, Bits...> value,
+    size_t amount);
+```
+
+Shift all packs to the left by the `amount` of bits.
+
+**Examples**
+
+```cpp
+using MyPack = pint::make_packed_int<3,7,6>;
+
+constexpr auto value = MyPack(1,2,3);
+shift_left(value, 3); // MyPack(0,16,24);
+```
+
+#### shift_right_unsigned
+
+```cpp
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr packed_int<Integer, Bits0, Bits...> shift_right_unsigned(
+    packed_int<Integer, Bits0, Bits...> value,
+    size_t amount);
+```
+
+Unsigned right shift of all packs by the `amount` of bits.
+
+**Examples**
+
+```cpp
+using MyPack = pint::make_packed_int<3,7,6>;
+
+constexpr auto value = MyPack(5,106,42);
+shift_right_unsigned(value, 4); // MyPack(0,6,2);
+```
+
 ## Credits
 
 The idea to create library sparkled after reading article [A Proposal for Hardware-Assisted Arithmetic Overflow Detection for Array and Bitfield Operations](http://www.emulators.com/docs/LazyOverflowDetect_Final.pdf)

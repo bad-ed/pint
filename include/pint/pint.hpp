@@ -273,6 +273,17 @@ template<> struct sum<> {
 template<class Seq> struct sum_seq;
 template<size_t ...Bits> struct sum_seq<integer_seq<Bits...>> : sum<Bits...> {};
 
+// Max of integers
+template<size_t Number0, size_t ...Numbers>
+struct find_max {
+    static const size_t value = Number0;
+};
+
+template<size_t Number0, size_t Number1, size_t ...Numbers>
+struct find_max<Number0, Number1, Numbers...> {
+    static const size_t value = find_max<(Number0 < Number1) ? Number1 : Number0, Numbers...>::value;
+};
+
 // Vector of offsets
 template<size_t... Bits>
 using mask_offsets_vector = prepend_seq<
@@ -594,6 +605,107 @@ constexpr Integer interleave(Integer a, Integer b, Integer mask) {
     return (a & mask) | (b & ~mask);
 }
 
+///////////////////////////////////////////////////////////////////////////////
+
+// Shift hi order bit to bit0 position
+template<class Integer>
+constexpr Integer sign_bit(Integer value) {
+    return value >> (sizeof(Integer) * 8 - 1);
+}
+
+// If value has sign_bit == 1, function returns 0, otherwise value is returned
+template<class Integer>
+constexpr Integer saturate_to_zero(Integer value) {
+    return (sign_bit(value) - 1) & value;
+}
+
+template<class Integer>
+constexpr Integer find_min(Integer a, Integer b) {
+    return a - saturate_to_zero(a - b);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Shifting
+
+#if __cpp_fold_expressions
+template<class Integer, class ...Masks>
+constexpr Integer shift_left_mask(size_t amount, seq<Masks...>) {
+    return (... |
+        ((take_2nd<Masks>::value << saturate_to_zero(take_1st<Masks>::value - amount)) - take_2nd<Masks>::value)
+    );
+}
+#else
+template<class Integer>
+constexpr Integer shift_left_mask(size_t amount, seq<>) {
+    return 0;
+}
+
+template<class Integer, class Mask, class ...Masks>
+constexpr Integer shift_left_mask(size_t amount, seq<Mask, Masks...>) {
+    using bits = take_1st<Mask>;
+    using mask = take_2nd<Mask>;
+
+    return ((mask::value << saturate_to_zero(bits::value - amount)) - mask::value)
+        | shift_left_mask<Integer>(amount, seq<Masks...>());
+}
+#endif
+
+// Bits are not the same
+template<class Integer, size_t Bits0, size_t ...Bits>
+constexpr Integer shift_left(Integer value, size_t amount, std::false_type) {
+    using mask_collection = unsigned_saturation_mask_type_2<Integer, Bits0, Bits...>;
+    return (shift_left_mask<Integer>(amount, mask_collection()) & value) << amount;
+}
+
+// All bits are the same
+template<class Integer, size_t Bits0, size_t ...Bits>
+constexpr Integer shift_left(Integer value, size_t amount, std::true_type) {
+    using lo_bits_mask = mask_loorder<Integer, Bits0, Bits...>;
+
+    // Reset min(amount,Bits0) of high order bits in each pack.
+    // Then shift all packs to the left
+    return (((lo_bits_mask::value << (Bits0 - amount)) - lo_bits_mask::value) & value) << amount;
+}
+
+#if __cpp_fold_expressions
+template<class Integer, class ...Masks>
+constexpr Integer shift_right_mask(size_t amount, seq<Masks...>) {
+    return (... |
+        ((take_2nd<Mask>::value << find_min(take_1st<Mask>::value, amount)) - take_2nd<Mask>::value)
+    );
+}
+#else
+template<class Integer>
+constexpr Integer shift_right_mask(size_t amount, seq<>) {
+    return 0;
+}
+template<class Integer, class Mask, class ...Masks>
+constexpr Integer shift_right_mask(size_t amount, seq<Mask, Masks...>) {
+    using bits = take_1st<Mask>;
+    using mask = take_2nd<Mask>;
+
+    return ((mask::value << find_min(bits::value, amount)) - mask::value)
+        | shift_right_mask<Integer>(amount, seq<Masks...>());
+}
+#endif
+
+template<class Integer, size_t Bits0, size_t ...Bits>
+constexpr Integer shift_right_unsigned(Integer value, size_t amount, std::false_type) {
+    using mask_collection = unsigned_saturation_mask_type_2<Integer, Bits0, Bits...>;
+    return (~shift_right_mask<Integer>(amount, mask_collection()) & value) >> amount;
+}
+
+template<class Integer, size_t Bits0, size_t ...Bits>
+constexpr Integer shift_right_unsigned(Integer value, size_t amount, std::true_type) {
+    using lo_bits_mask = mask_loorder<Integer, Bits0, Bits...>;
+
+    // Reset min(amount,Bits0) of hi order bits in each pack.
+    // Then shift all packs to the right
+    return ((~((lo_bits_mask::value << amount) - lo_bits_mask::value)) & value) >> amount;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 // Closest power of 2 of given number (rounded up)
 template<size_t NumberMinus1, size_t ShiftAmount = sizeof(size_t) * 8 / 2>
 struct clp2
@@ -888,6 +1000,31 @@ constexpr packed_int<Integer, Bits0, Bits...> max_signed(
                     ) & hi_order_bits_mask::value)
             )
         )
+    );
+}
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr packed_int<Integer, Bits0, Bits...> shift_left(
+    packed_int<Integer, Bits0, Bits...> value,
+    size_t shift_amount) noexcept
+{
+    return packed_int<Integer, Bits0, Bits...>(
+        // If shift amount >= max(Bits0, Bits...), then (sign_bit(...) - 1) == 0
+        (detail::sign_bit(detail::find_max<Bits0, Bits...>::value - shift_amount - 1) - 1)
+        & detail::shift_left<Integer, Bits0, Bits...>(value.value(), shift_amount,
+            detail::all_same<detail::integer_seq<Bits0, Bits...>>())
+    );
+}
+
+template<size_t Bits0, size_t ...Bits, class Integer>
+constexpr packed_int<Integer, Bits0, Bits...> shift_right_unsigned(
+    packed_int<Integer, Bits0, Bits...> value,
+    size_t shift_amount) noexcept
+{
+    return packed_int<Integer, Bits0, Bits...>(
+        (detail::sign_bit(detail::find_max<Bits0, Bits...>::value - shift_amount - 1) - 1)
+        & detail::shift_right_unsigned<Integer, Bits0, Bits...>(value.value(), shift_amount,
+            detail::all_same<detail::integer_seq<Bits0, Bits...>>())
     );
 }
 

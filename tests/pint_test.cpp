@@ -624,3 +624,157 @@ TEST(TestMaxSigned, PositiveNegative) {
 
     ASSERT_EQ(expected_max, pint::max_signed(a,b));
 }
+
+//////////////////////////////////////////////////////////////////////////////
+
+TEST(TestShiftLeft, SameLength_ShiftNotExceed)
+{
+    using PackedInt = pint::make_packed_int<4,4,4>;
+
+    constexpr auto value = PackedInt(1,2,3);
+    constexpr auto expected_value = PackedInt(4,8,12);
+
+    ASSERT_EQ(expected_value, shift_left(value, 2));
+}
+
+TEST(TestShiftLeft, SameLength_ShiftExceedPartially)
+{
+    using PackedInt = pint::make_packed_int<4,4,4>;
+
+    constexpr auto value = PackedInt(1,2,3);
+    constexpr auto expected_value = PackedInt(8,0,8);
+
+    ASSERT_EQ(expected_value, shift_left(value, 3));
+}
+
+TEST(TestShiftLeft, SameLength_ShiftExceed)
+{
+    using PackedInt = pint::make_packed_int<4,4,4>;
+
+    constexpr auto value = PackedInt(1,2,3);
+    constexpr auto expected_value = PackedInt(0,0,0);
+
+    ASSERT_EQ(expected_value, shift_left(value, 4));
+}
+
+TEST(TestShiftLeft, SameLength_ShiftExceedBits)
+{
+    using PackedInt = pint::make_packed_int<4,4,4>;
+
+    constexpr auto value = PackedInt(1,2,3);
+    constexpr auto expected_value = PackedInt(0,0,0);
+
+    // Use volatile here, to avoid compiler optimizations.
+    // It gave false-positive result at first (when implementation was flawed).
+    const volatile size_t shift = 5;
+    ASSERT_EQ(expected_value, shift_left(value, shift));
+}
+
+TEST(TestShiftLeft, VarLength_ShiftNotExceed)
+{
+    using PackedInt = pint::make_packed_int<3,7,6>;
+
+    constexpr auto value = PackedInt(1,2,3);
+    constexpr auto expected_value = PackedInt(4,8,12);
+
+    ASSERT_EQ(expected_value, shift_left(value, 2));
+}
+
+TEST(TestShiftLeft, VarLength_ShiftExceedPartially)
+{
+    using PackedInt = pint::make_packed_int<3,7,6>;
+
+    constexpr auto value = PackedInt(1,2,3);
+    constexpr auto expected_value = PackedInt(0,16,24);
+
+    const volatile size_t shift = 3;
+    ASSERT_EQ(expected_value, shift_left(value, shift));
+}
+
+TEST(TestShiftLeft, VarLength_ShiftExceed)
+{
+    using PackedInt = pint::make_packed_int<3,7,6>;
+
+    constexpr auto value = PackedInt(1,2,3);
+    constexpr auto expected_value = PackedInt(0,0,0);
+
+    const volatile size_t shift = 6;
+    ASSERT_EQ(expected_value, shift_left(value, shift));
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+TEST(TestShiftRight, SameLength_ShiftNotExceed)
+{
+    using PackedInt = pint::make_packed_int<4,4,4>;
+
+    constexpr auto value = PackedInt(4,8,12);
+    constexpr auto expected_value = PackedInt(1,2,3);
+
+    ASSERT_EQ(expected_value, shift_right_unsigned(value, 2));
+}
+
+TEST(TestShiftRight, SameLength_ShiftExceedPartially)
+{
+    using PackedInt = pint::make_packed_int<4,4,4>;
+
+    constexpr auto value = PackedInt(4,8,12);
+    constexpr auto expected_value = PackedInt(0,1,1);
+
+    ASSERT_EQ(expected_value, shift_right_unsigned(value, 3));
+}
+
+TEST(TestShiftRight, SameLength_ShiftExceed)
+{
+    using PackedInt = pint::make_packed_int<4,4,4>;
+
+    constexpr auto value = PackedInt(4,8,12);
+    constexpr auto expected_value = PackedInt(0,0,0);
+
+    ASSERT_EQ(expected_value, shift_right_unsigned(value, 4));
+}
+
+TEST(TestShiftRight, SameLength_ShiftExceedBits)
+{
+    using PackedInt = pint::make_packed_int<4,4,4>;
+
+    constexpr auto value = PackedInt(4,8,12);
+    constexpr auto expected_value = PackedInt(0,0,0);
+
+    // Use volatile here, to avoid compiler optimizations.
+    // It gave false-positive result at first (when implementation was flawed).
+    const volatile size_t shift = 5;
+    ASSERT_EQ(expected_value, shift_right_unsigned(value, shift));
+}
+
+TEST(TestShiftRight, VarLength_ShiftNotExceed)
+{
+    using PackedInt = pint::make_packed_int<3,7,6>;
+
+    constexpr auto value = PackedInt(4,8,12);
+    constexpr auto expected_value = PackedInt(1,2,3);
+
+    ASSERT_EQ(expected_value, shift_right_unsigned(value, 2));
+}
+
+TEST(TestShiftRight, VarLength_ShiftExceedPartially)
+{
+    using PackedInt = pint::make_packed_int<3,7,6>;
+
+    constexpr auto value = PackedInt(5,106,42);
+    constexpr auto expected_value = PackedInt(0,6,2);
+
+    const volatile size_t shift = 4;
+    ASSERT_EQ(expected_value, shift_right_unsigned(value, shift));
+}
+
+TEST(TestShiftRight, VarLength_ShiftExceed)
+{
+    using PackedInt = pint::make_packed_int<3,7,6>;
+
+    constexpr auto value = PackedInt(5,106,42);
+    constexpr auto expected_value = PackedInt(0,1,0);
+
+    const volatile size_t shift = 6;
+    ASSERT_EQ(expected_value, shift_right_unsigned(value, shift));
+}
