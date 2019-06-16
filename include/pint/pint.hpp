@@ -307,12 +307,12 @@ template<class T, class IntegerSeq> struct make_mask_from_bitpos_impl;
 #if __cpp_fold_expressions
 template<class T, size_t ...Bits>
 struct make_mask_from_bitpos_impl<T, integer_seq<Bits...>> {
-    static const T value = (... | (1 << Bits));
+    static const T value = (... | (T(1) << Bits));
 };
 #else
 template<class T, size_t Bits0, size_t ...Bits>
 struct make_mask_from_bitpos_impl<T, integer_seq<Bits0, Bits...>> {
-    static const T value = (1 << Bits0) |
+    static const T value = (T(1) << Bits0) |
         make_mask_from_bitpos_impl<T, integer_seq<Bits...>>::value;
 };
 template<class T> struct make_mask_from_bitpos_impl<T, integer_seq<>> {
@@ -338,7 +338,7 @@ using mask_loorder = std::integral_constant<T,
 
 // Make mask of length Bits with all bits set to 1
 template<class T, size_t Bits> struct all_ones {
-    static const T value = (1 << Bits) - 1;
+    static const T value = (T(1) << Bits) - 1;
 };
 template<class T> struct all_ones<T, 32> {
     static const T value = static_cast<T>(0xffffffff);
