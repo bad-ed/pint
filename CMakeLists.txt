@@ -7,9 +7,9 @@ set(CMAKE_BUILD_TYPE RelWithDebInfo)
 #set(CMAKE_BUILD_TYPE Debug)
 
 # set(CMAKE_EXPORT_COMPILE_COMMANDS true)
-include_directories(PUBLIC ./include)
+include_directories(./include)
 
-find_package(GTest)
+find_package(GTest REQUIRED)
 
 # Unit test
 set(SOURCES
@@ -20,16 +20,21 @@ add_executable(pint_test ${SOURCES})
 
 target_link_libraries(
 	pint_test
-		PUBLIC GTest::Main GTest::GTest
+		PRIVATE GTest::Main GTest::GTest
 )
 
 target_include_directories(
 	pint_test
-		PUBLIC ${GTest_INCLUDE_DIRS}
+		PRIVATE ${GTest_INCLUDE_DIRS}
 )
 
-gtest_add_tests(pint_test '' AUTO)
+gtest_discover_tests(pint_test '' AUTO)
 
 # Benchmarks
 
+find_package(benchmark REQUIRED)
 add_executable(pint_bench tests/pint_bench.cpp)
+target_link_libraries(
+	pint_bench
+		PRIVATE benchmark::benchmark_main benchmark::benchmark
+)

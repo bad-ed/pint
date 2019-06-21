@@ -3,6 +3,16 @@
 #include <random>
 #include <vector>
 
+#include <benchmark/benchmark.h>
+
+#if defined(__x86_64__) || defined(_M_X64)
+#define PINT_HAVE_SSE
+#endif
+
+#ifdef PINT_HAVE_SSE
+#include <emmintrin.h>
+#endif
+
 #include "pint/pint.hpp"
 
 using TestVector = std::vector<std::pair<uint32_t, uint32_t>>;
@@ -22,6 +32,14 @@ TestVector GetRandomPairs(size_t amount_of_pairs) {
     return result;
 }
 
+template<size_t bits>
+uint32_t uclamp(uint32_t value) {
+    static const uint32_t kMaxv = (1 << bits) - 1;
+
+    if (value > kMaxv) return kMaxv;
+    return value;
+}
+
 class Bench {
 public:
     std::chrono::steady_clock::duration TimeSinceStart() const {
@@ -34,47 +52,65 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-uint32_t Baseline(const TestVector &numbers) {
-    uint32_t sum = 0;
-    for (auto &pair : numbers)
-        sum += pair.first + pair.second;
-
-    return sum;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-uint32_t AddWrapUsingPint(const TestVector &numbers) {
-    using PackedInt = pint::packed_int<uint32_t,1,2,3,4,5,6,11>;
-
-    uint32_t sum = 0;
-    for (auto &pair : numbers)
-        sum += pint::add_wrap(PackedInt(pair.first), PackedInt(pair.second)).value();
-
-    return sum;
-}
-
-uint32_t AddWrapUsingBitshifting(const TestVector &numbers) {
-    uint32_t sum = 0;
-    for (auto &pair : numbers) {
-        auto a = pair.first;
-        auto b = pair.second;
-
-        const uint32_t result = (((a & 1) + (b & 1)) & 1) |
-            (((a & 6) + (b & 6)) & 6) |
-            (((a & 0x38) + (b & 0x38)) & 0x38) |
-            (((a & 0x3C0) + (b & 0x3C0)) & 0x3C0) |
-            (((a & 0x7C00) + (b & 0x7C00)) & 0x7C00) |
-            (((a & 0x1F8000) + (b & 0x1F8000)) & 0x1F8000) |
-            ((a & 0xFFE00000) + (b & 0xFFE00000));
-
-        sum += result;
+class PairsBenchmarks : public benchmark::Fixture {
+public:
+    void SetUp(benchmark::State &st) override {
+        sum = 0;
     }
 
-    return sum;
+    void TearDown(benchmark::State &state) override {
+        state.SetItemsProcessed(numbers.size() * state.iterations());
+        state.SetLabel("Sum = " + std::to_string(sum));
+    }
+
+protected:
+    static TestVector numbers;
+    uint32_t sum;
+};
+
+TestVector PairsBenchmarks::numbers = GetRandomPairs(100000000);
+
+BENCHMARK_F(PairsBenchmarks, Baseline)(benchmark::State& state) {
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers)
+            sum += pair.first + pair.second;
+    }
 }
 
-uint32_t AddWrapUsingUnion(const TestVector &numbers) {
+using AddWrap = PairsBenchmarks;
+
+BENCHMARK_F(AddWrap, Pint)(benchmark::State& state) {
+    using PackedInt = pint::packed_int<uint32_t,1,2,3,4,5,6,11>;
+
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers)
+            sum += pint::add_wrap(PackedInt(pair.first), PackedInt(pair.second)).value();
+    }
+}
+
+BENCHMARK_F(AddWrap, BitshiftingNaive)(benchmark::State& state) {
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers) {
+            auto a = pair.first;
+            auto b = pair.second;
+
+            const uint32_t result = (((a & 1) + (b & 1)) & 1) |
+                (((a & 6) + (b & 6)) & 6) |
+                (((a & 0x38) + (b & 0x38)) & 0x38) |
+                (((a & 0x3C0) + (b & 0x3C0)) & 0x3C0) |
+                (((a & 0x7C00) + (b & 0x7C00)) & 0x7C00) |
+                (((a & 0x1F8000) + (b & 0x1F8000)) & 0x1F8000) |
+                ((a & 0xFFE00000) + (b & 0xFFE00000));
+
+            sum += result;
+        }
+    }
+}
+
+BENCHMARK_F(AddWrap, Union)(benchmark::State& state) {
     union SumUnion {
         struct {
             uint32_t a: 1;
@@ -89,40 +125,89 @@ uint32_t AddWrapUsingUnion(const TestVector &numbers) {
         uint32_t value;
     };
 
-    uint32_t sum = 0;
-    for (auto &pair : numbers) {
-        SumUnion a,b,c;
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers) {
+            SumUnion a,b,c;
 
-        a.value = pair.first;
-        b.value = pair.second;
+            a.value = pair.first;
+            b.value = pair.second;
 
-        c.a = a.a + b.a;
-        c.b = a.b + b.b;
-        c.c = a.c + b.c;
-        c.d = a.d + b.d;
-        c.e = a.e + b.e;
-        c.f = a.f + b.f;
-        c.g = a.g + b.g;
+            c.a = a.a + b.a;
+            c.b = a.b + b.b;
+            c.c = a.c + b.c;
+            c.d = a.d + b.d;
+            c.e = a.e + b.e;
+            c.f = a.f + b.f;
+            c.g = a.g + b.g;
 
-        sum += c.value;
+            sum += c.value;
+        }
     }
-
-    return sum;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-uint32_t SubWrapUsingPint(const TestVector &numbers) {
-    using PackedInt = pint::packed_int<uint32_t,1,2,3,4,5,6,11>;
+using AddWrap0 = PairsBenchmarks;
 
-    uint32_t sum = 0;
-    for (auto &pair : numbers)
-        sum += pint::sub_wrap(PackedInt(pair.first), PackedInt(pair.second)).value();
+BENCHMARK_F(AddWrap0, Pint)(benchmark::State& state) {
+    using PackedInt = pint::packed_int<uint32_t,8,8,8,8>;
 
-    return sum;
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers)
+            sum += pint::add_wrap(PackedInt(pair.first), PackedInt(pair.second)).value();
+    }
 }
 
-uint32_t SubWrapUsingUnion(const TestVector &numbers) {
+#ifdef PINT_HAVE_SSE
+BENCHMARK_F(AddWrap0, SSE2)(benchmark::State& state) {
+    for (auto $ : state) {
+        auto tmp_sum = _mm_setzero_si128();
+        const __m128i *data = reinterpret_cast<const __m128i *>(numbers.data());
+
+        for (size_t i = 0; i < numbers.size(); i += 4, data += 2) {
+#if 1
+            //auto a = _mm_setr_epi32(numbers[i].first, numbers[i].second, numbers[i+1].first, numbers[i+1].second);
+            //auto b = _mm_setr_epi32(numbers[i+2].first, numbers[i+2].second, numbers[i+3].first, numbers[i+3].second);
+            auto a = _mm_loadu_si128(data);
+            auto b = _mm_loadu_si128(data + 1);
+
+            auto a0 = _mm_unpacklo_epi32(a, b); // {[0].first, [2].first, [0].second, [2].second}
+            auto b0 = _mm_unpackhi_epi32(a, b); // {[1].first, [3].first, [1].second, [3].second}
+
+            a = _mm_unpacklo_epi32(a0, b0);
+            b = _mm_unpackhi_epi32(a0, b0);
+#else
+            auto a = _mm_set_epi32(numbers[i].first, numbers[i+1].first, numbers[i+2].first, numbers[i+3].first);
+            auto b = _mm_set_epi32(numbers[i].second, numbers[i+1].second, numbers[i+2].second, numbers[i+3].second);
+#endif
+            auto c = _mm_add_epi8(a, b);
+            tmp_sum = _mm_add_epi32(c, tmp_sum);
+        }
+
+        tmp_sum = _mm_add_epi32(tmp_sum, _mm_srli_si128(tmp_sum, 8));
+        tmp_sum = _mm_add_epi32(tmp_sum, _mm_srli_si128(tmp_sum, 4));
+        sum = _mm_cvtsi128_si32(tmp_sum);
+    }
+}
+#endif
+
+////////////////////////////////////////////////////////////////////////////////
+
+using SubWrap = PairsBenchmarks;
+
+BENCHMARK_F(SubWrap, Pint)(benchmark::State& state) {
+    using PackedInt = pint::packed_int<uint32_t,1,2,3,4,5,6,11>;
+
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers)
+            sum += pint::sub_wrap(PackedInt(pair.first), PackedInt(pair.second)).value();
+    }
+}
+
+BENCHMARK_F(SubWrap, Union)(benchmark::State& state) {
     union SumUnion {
         struct {
             uint32_t a: 1;
@@ -137,40 +222,42 @@ uint32_t SubWrapUsingUnion(const TestVector &numbers) {
         uint32_t value;
     };
 
-    uint32_t sum = 0;
-    for (auto &pair : numbers) {
-        SumUnion a,b,c;
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers) {
+            SumUnion a,b,c;
 
-        a.value = pair.first;
-        b.value = pair.second;
+            a.value = pair.first;
+            b.value = pair.second;
 
-        c.a = a.a - b.a;
-        c.b = a.b - b.b;
-        c.c = a.c - b.c;
-        c.d = a.d - b.d;
-        c.e = a.e - b.e;
-        c.f = a.f - b.f;
-        c.g = a.g - b.g;
+            c.a = a.a - b.a;
+            c.b = a.b - b.b;
+            c.c = a.c - b.c;
+            c.d = a.d - b.d;
+            c.e = a.e - b.e;
+            c.f = a.f - b.f;
+            c.g = a.g - b.g;
 
-        sum += c.value;
+            sum += c.value;
+        }
     }
-
-    return sum;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-uint32_t AddUnsignedSaturationUsingPint(const TestVector &numbers) {
+using AddSatU2 = PairsBenchmarks;
+
+BENCHMARK_F(AddSatU2, Pint)(benchmark::State& state) {
     using PackedInt = pint::packed_int<uint32_t,1,2,3,4,5,6,11>;
 
-    uint32_t sum = 0;
-    for (auto &pair : numbers)
-        sum += pint::add_unsigned_saturate(PackedInt(pair.first), PackedInt(pair.second)).value();
-
-    return sum;
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers)
+            sum += pint::add_unsigned_saturate(PackedInt(pair.first), PackedInt(pair.second)).value();
+    }
 }
 
-uint32_t AddUnsignedSaturationUsingUnion(const TestVector &numbers) {
+BENCHMARK_F(AddSatU2, Union)(benchmark::State& state) {
     union SumUnion {
         struct {
             uint32_t a: 1;
@@ -185,53 +272,91 @@ uint32_t AddUnsignedSaturationUsingUnion(const TestVector &numbers) {
         uint32_t value;
     };
 
-    uint32_t sum = 0;
-    for (auto &pair : numbers) {
-        SumUnion a,b,c;
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers) {
+            SumUnion a,b,c;
 
-        a.value = pair.first;
-        b.value = pair.second;
+            a.value = pair.first;
+            b.value = pair.second;
 
-        c.a = a.a + b.a;
-        if (c.a < a.a && c.a < b.a) c.a = 1;
+            c.a = a.a + b.a;
+            if (c.a < a.a && c.a < b.a) c.a = 1;
 
-        c.b = a.b + b.b;
-        if (c.b < a.b && c.b < b.b) c.b = 3;
+            c.b = a.b + b.b;
+            if (c.b < a.b && c.b < b.b) c.b = 3;
 
-        c.c = a.c + b.c;
-        if (c.c < a.c && c.c < b.c) c.c = 7;
+            c.c = a.c + b.c;
+            if (c.c < a.c && c.c < b.c) c.c = 7;
 
-        c.d = a.d + b.d;
-        if (c.d < a.d && c.d < b.d) c.d = 15;
+            c.d = a.d + b.d;
+            if (c.d < a.d && c.d < b.d) c.d = 15;
 
-        c.e = a.e + b.e;
-        if (c.e < a.e && c.e < b.e) c.e = 31;
+            c.e = a.e + b.e;
+            if (c.e < a.e && c.e < b.e) c.e = 31;
 
-        c.f = a.f + b.f;
-        if (c.f < a.f && c.f < b.f) c.f = 63;
+            c.f = a.f + b.f;
+            if (c.f < a.f && c.f < b.f) c.f = 63;
 
-        c.g = a.g + b.g;
-        if (c.g < a.g && c.g < b.g) c.g = 2047;
+            c.g = a.g + b.g;
+            if (c.g < a.g && c.g < b.g) c.g = 2047;
 
-        sum += c.value;
+            sum += c.value;
+        }
     }
+}
 
-    return sum;
+BENCHMARK_F(AddSatU2, UnionClamp)(benchmark::State& state) {
+    union SumUnion {
+        struct {
+            uint32_t a: 1;
+            uint32_t b: 2;
+            uint32_t c: 3;
+            uint32_t d: 4;
+            uint32_t e: 5;
+            uint32_t f: 6;
+            uint32_t g: 11;
+        };
+
+        uint32_t value;
+    };
+
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers) {
+            SumUnion a,b,c;
+
+            a.value = pair.first;
+            b.value = pair.second;
+
+            c.a = uclamp<1>(a.a + b.a);
+            c.b = uclamp<2>(a.b + b.b);
+            c.c = uclamp<3>(a.c + b.c);
+            c.d = uclamp<4>(a.d + b.d);
+            c.e = uclamp<5>(a.e + b.e);
+            c.f = uclamp<6>(a.f + b.f);
+            c.g = uclamp<11>(a.g + b.g);
+
+            sum += c.value;
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-uint32_t AddUnsignedSaturationUsingPint_Type1(const TestVector &numbers) {
+using AddSatU1 = PairsBenchmarks;
+
+BENCHMARK_F(AddSatU1, Pint)(benchmark::State& state) {
     using PackedInt = pint::packed_int<uint32_t,1,3,5,11>;
 
-    uint32_t sum = 0;
-    for (auto &pair : numbers)
-        sum += pint::add_unsigned_saturate(PackedInt(pair.first), PackedInt(pair.second)).value();
-
-    return sum;
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers)
+            sum += pint::add_unsigned_saturate(PackedInt(pair.first), PackedInt(pair.second)).value();
+    }
 }
 
-uint32_t AddUnsignedSaturationUsingUnion_Type1(const TestVector &numbers) {
+BENCHMARK_F(AddSatU1, Union)(benchmark::State& state) {
     union SumUnion {
         struct {
             uint32_t a: 1;
@@ -243,41 +368,33 @@ uint32_t AddUnsignedSaturationUsingUnion_Type1(const TestVector &numbers) {
         uint32_t value;
     };
 
-    uint32_t sum = 0;
-    for (auto &pair : numbers) {
-        SumUnion a,b,c;
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers) {
+            SumUnion a,b,c;
 
-        a.value = pair.first;
-        b.value = pair.second;
-        c.value = 0;
+            a.value = pair.first;
+            b.value = pair.second;
+            c.value = 0;
 
-        c.a = a.a + b.a;
-        if (c.a < a.a && c.a < b.a) c.a = 1;
+            c.a = a.a + b.a;
+            if (c.a < a.a && c.a < b.a) c.a = 1;
 
-        c.c = a.c + b.c;
-        if (c.c < a.c && c.c < b.c) c.c = 7;
+            c.c = a.c + b.c;
+            if (c.c < a.c && c.c < b.c) c.c = 7;
 
-        c.e = a.e + b.e;
-        if (c.e < a.e && c.e < b.e) c.e = 31;
+            c.e = a.e + b.e;
+            if (c.e < a.e && c.e < b.e) c.e = 31;
 
-        c.g = a.g + b.g;
-        if (c.g < a.g && c.g < b.g) c.g = 2047;
+            c.g = a.g + b.g;
+            if (c.g < a.g && c.g < b.g) c.g = 2047;
 
-        sum += c.value;
+            sum += c.value;
+        }
     }
-
-    return sum;
 }
 
-template<size_t bits>
-uint32_t uclamp(uint32_t value) {
-    static const uint32_t kMaxv = (1 << bits) - 1;
-
-    if (value > kMaxv) return kMaxv;
-    return value;
-}
-
-uint32_t AddUnsignedSaturationUsingUnion_Type1_Clamp(const TestVector &numbers) {
+BENCHMARK_F(AddSatU1, UnionClamp)(benchmark::State& state) {
     union SumUnion {
         struct {
             uint32_t a: 1;
@@ -289,23 +406,121 @@ uint32_t AddUnsignedSaturationUsingUnion_Type1_Clamp(const TestVector &numbers) 
         uint32_t value;
     };
 
-    uint32_t sum = 0;
-    for (auto &pair : numbers) {
-        SumUnion a,b,c;
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers) {
+            SumUnion a,b,c;
 
-        a.value = pair.first;
-        b.value = pair.second;
-        c.value = 0;
+            a.value = pair.first;
+            b.value = pair.second;
+            c.value = 0;
 
-        c.a = uclamp<1>(a.a + b.a);
-        c.c = uclamp<3>(a.c + b.c);
-        c.e = uclamp<5>(a.e + b.e);
-        c.g = uclamp<11>(a.g + b.g);
+            c.a = uclamp<1>(a.a + b.a);
+            c.c = uclamp<3>(a.c + b.c);
+            c.e = uclamp<5>(a.e + b.e);
+            c.g = uclamp<11>(a.g + b.g);
 
-        sum += c.value;
+            sum += c.value;
+        }
     }
+}
 
-    return sum;
+////////////////////////////////////////////////////////////////////////////////
+
+using AddSatU0 = PairsBenchmarks;
+
+BENCHMARK_F(AddSatU0, Pint)(benchmark::State& state) {
+    using PackedInt = pint::packed_int<uint32_t,8,8,8,8>;
+
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers)
+            sum += pint::add_unsigned_saturate(PackedInt(pair.first), PackedInt(pair.second)).value();
+    }
+}
+
+BENCHMARK_F(AddSatU0, Pint64)(benchmark::State& state) {
+    using PackedInt = pint::packed_int<uint64_t,8,8,8,8,8,8,8,8>;
+
+    for (auto $ : state) {
+        using PackedSum = pint::packed_int<uint64_t, 32, 32>;
+        PackedSum tmp_sum{0};
+
+        for (size_t i = 0; i < numbers.size(); i += 2) {
+            auto a = PackedInt((static_cast<uint64_t>(numbers[i+1].first) << 32) | numbers[i].first);
+            auto b = PackedInt((static_cast<uint64_t>(numbers[i+1].second) << 32) | numbers[i].second);
+
+            auto c = PackedSum(pint::add_unsigned_saturate(a, b).value());
+            tmp_sum = pint::add_wrap(tmp_sum, c);
+        }
+
+        sum = static_cast<uint32_t>(tmp_sum.value() >> 32) + static_cast<uint32_t>(tmp_sum.value());
+    }
+}
+
+#ifdef PINT_HAVE_SSE
+BENCHMARK_F(AddSatU0, SSE2)(benchmark::State& state) {
+    for (auto $ : state) {
+        auto tmp_sum = _mm_setzero_si128();
+        const __m128i *data = reinterpret_cast<const __m128i *>(numbers.data());
+
+        for (size_t i = 0; i < numbers.size(); i += 4, data += 2) {
+#if 1
+            //auto a = _mm_setr_epi32(numbers[i].first, numbers[i].second, numbers[i+1].first, numbers[i+1].second);
+            //auto b = _mm_setr_epi32(numbers[i+2].first, numbers[i+2].second, numbers[i+3].first, numbers[i+3].second);
+            auto a = _mm_loadu_si128(data);
+            auto b = _mm_loadu_si128(data + 1);
+
+            auto a0 = _mm_unpacklo_epi32(a, b); // {[0].first, [2].first, [0].second, [2].second}
+            auto b0 = _mm_unpackhi_epi32(a, b); // {[1].first, [3].first, [1].second, [3].second}
+
+            a = _mm_unpacklo_epi32(a0, b0);
+            b = _mm_unpackhi_epi32(a0, b0);
+#else
+            auto a = _mm_set_epi32(numbers[i].first, numbers[i+1].first, numbers[i+2].first, numbers[i+3].first);
+            auto b = _mm_set_epi32(numbers[i].second, numbers[i+1].second, numbers[i+2].second, numbers[i+3].second);
+#endif
+            auto c = _mm_adds_epu8(a, b);
+            tmp_sum = _mm_add_epi32(c, tmp_sum);
+        }
+
+        tmp_sum = _mm_add_epi32(tmp_sum, _mm_srli_si128(tmp_sum, 8));
+        tmp_sum = _mm_add_epi32(tmp_sum, _mm_srli_si128(tmp_sum, 4));
+        sum = _mm_cvtsi128_si32(tmp_sum);
+    }
+}
+#endif
+
+BENCHMARK_F(AddSatU0, UnionClamp)(benchmark::State& state) {
+    union SumUnion {
+        struct {
+            uint32_t a: 8;
+            uint32_t b: 8;
+            uint32_t c: 8;
+            uint32_t d: 8;
+        };
+
+        uint32_t value;
+    };
+
+    for (auto $ : state) {
+        sum = 0;
+
+        for (auto &pair : numbers) {
+            SumUnion a,b,c;
+
+            a.value = pair.first;
+            b.value = pair.second;
+            c.value = 0;
+
+            c.a = uclamp<8>(a.a + b.a);
+            c.b = uclamp<8>(a.b + b.b);
+            c.c = uclamp<8>(a.c + b.c);
+            c.d = uclamp<8>(a.d + b.d);
+
+            sum += c.value;
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -320,17 +535,19 @@ int32_t clamp(int32_t value) {
     return value;
 }
 
-uint32_t AddSignedSaturationUsingPint(const TestVector &numbers) {
+using AddSatS2 = PairsBenchmarks;
+
+BENCHMARK_F(AddSatS2, Pint)(benchmark::State& state) {
     using PackedInt = pint::packed_int<uint32_t,1,2,3,4,5,6,11>;
 
-    uint32_t sum = 0;
-    for (auto &pair : numbers)
-        sum += pint::add_signed_saturate(PackedInt(pair.first), PackedInt(pair.second)).value();
-
-    return sum;
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers)
+            sum += pint::add_signed_saturate(PackedInt(pair.first), PackedInt(pair.second)).value();
+    }
 }
 
-uint32_t AddSignedSaturationUsingUnion(const TestVector &numbers) {
+BENCHMARK_F(AddSatS2, UnionClamp)(benchmark::State& state) {
     union SumUnion {
         struct {
             int32_t a: 1;
@@ -345,40 +562,42 @@ uint32_t AddSignedSaturationUsingUnion(const TestVector &numbers) {
         uint32_t value;
     };
 
-    uint32_t sum = 0;
-    for (auto &pair : numbers) {
-        SumUnion a,b,c;
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers) {
+            SumUnion a,b,c;
 
-        a.value = pair.first;
-        b.value = pair.second;
+            a.value = pair.first;
+            b.value = pair.second;
 
-        c.a = clamp<1>(a.a + b.a);
-        c.b = clamp<2>(a.b + b.b);
-        c.c = clamp<3>(a.c + b.c);
-        c.d = clamp<4>(a.d + b.d);
-        c.e = clamp<5>(a.e + b.e);
-        c.f = clamp<6>(a.f + b.f);
-        c.g = clamp<11>(a.g + b.g);
+            c.a = clamp<1>(a.a + b.a);
+            c.b = clamp<2>(a.b + b.b);
+            c.c = clamp<3>(a.c + b.c);
+            c.d = clamp<4>(a.d + b.d);
+            c.e = clamp<5>(a.e + b.e);
+            c.f = clamp<6>(a.f + b.f);
+            c.g = clamp<11>(a.g + b.g);
 
-        sum += c.value;
+            sum += c.value;
+        }
     }
-
-    return sum;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-uint32_t AddSignedSaturationUsingPint2(const TestVector &numbers) {
+using AddSatS0 = PairsBenchmarks;
+
+BENCHMARK_F(AddSatS0, Pint)(benchmark::State& state) {
     using PackedInt = pint::packed_int<uint32_t,4,4,4,4,4,4,4,4>;
 
-    uint32_t sum = 0;
-    for (auto &pair : numbers)
-        sum += pint::add_signed_saturate(PackedInt(pair.first), PackedInt(pair.second)).value();
-
-    return sum;
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers)
+            sum += pint::add_signed_saturate(PackedInt(pair.first), PackedInt(pair.second)).value();
+    }
 }
 
-uint32_t AddSignedSaturationUsingUnion2(const TestVector &numbers) {
+BENCHMARK_F(AddSatS0, UnionClamp)(benchmark::State& state) {
     union SumUnion {
         struct {
             int32_t a: 4;
@@ -394,72 +613,24 @@ uint32_t AddSignedSaturationUsingUnion2(const TestVector &numbers) {
         uint32_t value;
     };
 
-    uint32_t sum = 0;
-    for (auto &pair : numbers) {
-        SumUnion a,b,c;
+    for (auto $ : state) {
+        sum = 0;
+        for (auto &pair : numbers) {
+            SumUnion a,b,c;
 
-        a.value = pair.first;
-        b.value = pair.second;
+            a.value = pair.first;
+            b.value = pair.second;
 
-        c.a = clamp<4>(a.a + b.a);
-        c.b = clamp<4>(a.b + b.b);
-        c.c = clamp<4>(a.c + b.c);
-        c.d = clamp<4>(a.d + b.d);
-        c.e = clamp<4>(a.e + b.e);
-        c.f = clamp<4>(a.f + b.f);
-        c.g = clamp<4>(a.g + b.g);
-        c.h = clamp<4>(a.h + b.h);
+            c.a = clamp<4>(a.a + b.a);
+            c.b = clamp<4>(a.b + b.b);
+            c.c = clamp<4>(a.c + b.c);
+            c.d = clamp<4>(a.d + b.d);
+            c.e = clamp<4>(a.e + b.e);
+            c.f = clamp<4>(a.f + b.f);
+            c.g = clamp<4>(a.g + b.g);
+            c.h = clamp<4>(a.h + b.h);
 
-        sum += c.value;
-    }
-
-    return sum;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
-int main() {
-    struct {
-        uint32_t (* volatile bench_func)(const TestVector &);
-        const char *bench_descr;
-    } static const kTests[] = {
-        { Baseline,                "warmup            " },
-        { Baseline,                "baseline          " },
-        { AddWrapUsingPint,        "pint    |add|wrap " },
-        { AddWrapUsingUnion,       "union   |add|wrap " },
-
-        { AddUnsignedSaturationUsingPint, "pint    |add|sat/u" },
-        { AddUnsignedSaturationUsingUnion,"union   |add|sat/u" },
-
-        { AddUnsignedSaturationUsingPint_Type1, "pint/1  |add|sat/u" },
-        { AddUnsignedSaturationUsingUnion_Type1,"union/1 |add|sat/u" },
-        { AddUnsignedSaturationUsingUnion_Type1_Clamp,"union/1c|add|sat/u" },
-
-        { AddSignedSaturationUsingPint, "pint    |add|sat/s" },
-        { AddSignedSaturationUsingUnion,"union   |add|sat/s" },
-
-        { AddSignedSaturationUsingPint2, "pint/0  |add|sat/s" },
-        { AddSignedSaturationUsingUnion2,"union/0 |add|sat/s" },
-
-        { SubWrapUsingPint,        "pint    |sub|wrap " },
-        { SubWrapUsingUnion,       "union   |sub|wrap " },
-    };
-
-    std::cout << "Generating random pairs\n";
-    auto random_pairs = GetRandomPairs(100000000);
-
-    for (auto &bench_info : kTests)
-    {
-        uint32_t res;
-        std::chrono::duration<double, std::milli> duration;
-
-        {
-            Bench $;
-            res = bench_info.bench_func(random_pairs);
-            duration = $.TimeSinceStart();
+            sum += c.value;
         }
-
-        std::cout << bench_info.bench_descr << " = " << res << " # " <<
-            "Time taken: " << duration.count() << "ms\n";
     }
 }
