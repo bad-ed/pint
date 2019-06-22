@@ -13,6 +13,10 @@
 #include <emmintrin.h>
 #endif
 
+#ifdef __ARM_NEON
+#include <arm_neon.h>
+#endif
+
 #include "pint/pint.hpp"
 
 using TestVector = std::vector<std::pair<uint32_t, uint32_t>>;
@@ -189,6 +193,28 @@ BENCHMARK_F(AddWrap0, SSE2)(benchmark::State& state) {
         tmp_sum = _mm_add_epi32(tmp_sum, _mm_srli_si128(tmp_sum, 8));
         tmp_sum = _mm_add_epi32(tmp_sum, _mm_srli_si128(tmp_sum, 4));
         sum = _mm_cvtsi128_si32(tmp_sum);
+    }
+}
+#endif
+
+#ifdef __ARM_NEON
+BENCHMARK_F(AddWrap0, Neon)(benchmark::State& state) {
+    using PackedInt = pint::packed_int<uint32_t,8,8,8,8>;
+
+    for (auto $ : state) {
+        sum = 0;
+
+        uint32x4_t tmp_sum = vdupq_n_u32(0);
+
+        const uint32_t *data = reinterpret_cast<const uint32_t *>(numbers.data());
+        for (size_t i = 0; i < numbers.size(); i += 4, data += 8) {
+            auto pairs = vld2q_u32(data);
+            auto res = vaddq_u8(pairs.val[0], pairs.val[1]);
+            tmp_sum = vaddq_u32(res, tmp_sum);
+        }
+
+        auto r1 = vadd_u32(vget_low_u32(tmp_sum), vget_high_u32(tmp_sum));
+        sum = vget_lane_u32(vpadd_u32(r1, r1), 0);
     }
 }
 #endif
@@ -487,6 +513,28 @@ BENCHMARK_F(AddSatU0, SSE2)(benchmark::State& state) {
         tmp_sum = _mm_add_epi32(tmp_sum, _mm_srli_si128(tmp_sum, 8));
         tmp_sum = _mm_add_epi32(tmp_sum, _mm_srli_si128(tmp_sum, 4));
         sum = _mm_cvtsi128_si32(tmp_sum);
+    }
+}
+#endif
+
+#ifdef __ARM_NEON
+BENCHMARK_F(AddSatU0, Neon)(benchmark::State& state) {
+    using PackedInt = pint::packed_int<uint32_t,8,8,8,8>;
+
+    for (auto $ : state) {
+        sum = 0;
+
+        uint32x4_t tmp_sum = vdupq_n_u32(0);
+
+        const uint32_t *data = reinterpret_cast<const uint32_t *>(numbers.data());
+        for (size_t i = 0; i < numbers.size(); i += 4, data += 8) {
+            auto pairs = vld2q_u32(data);
+            auto res = vqaddq_u8(pairs.val[0], pairs.val[1]);
+            tmp_sum = vaddq_u32(res, tmp_sum);
+        }
+
+        auto r1 = vadd_u32(vget_low_u32(tmp_sum), vget_high_u32(tmp_sum));
+        sum = vget_lane_u32(vpadd_u32(r1, r1), 0);
     }
 }
 #endif

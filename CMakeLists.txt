@@ -1,14 +1,10 @@
+project(pint CXX)
 cmake_minimum_required(VERSION 3.12)
 enable_testing()
 
 #set(CMAKE_CXX_FLAGS "-std=c++17")
 
-set(CMAKE_BUILD_TYPE RelWithDebInfo)
-#set(CMAKE_BUILD_TYPE Debug)
-
-# set(CMAKE_EXPORT_COMPILE_COMMANDS true)
-include_directories(./include)
-
+include_directories(${PROJECT_SOURCE_DIR}/include)
 find_package(GTest REQUIRED)
 
 # Unit test
@@ -28,7 +24,9 @@ target_include_directories(
 		PRIVATE ${GTest_INCLUDE_DIRS}
 )
 
-gtest_discover_tests(pint_test '' AUTO)
+if (NOT CMAKE_CROSSCOMPILING)
+	gtest_discover_tests(pint_test '' AUTO)
+endif()
 
 # Benchmarks
 
