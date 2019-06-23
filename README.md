@@ -18,7 +18,7 @@ A C++ compiler that supports C++11.
 using MyPack = pint::make_packed_int<5,6,5>;
 
 // Create first packed integer.
-// a == 2 | (10 << 6) | (20 << 11)
+// a == 2 | (10 << 5) | (20 << 11)
 constexpr auto a = MyPack(2, 10, 20);
 // Second packed integer
 constexpr auto b = MyPack(1, 2, 12);
