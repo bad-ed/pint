@@ -671,7 +671,7 @@ constexpr Integer shift_left(Integer value, size_t amount, std::true_type) {
 template<class Integer, class ...Masks>
 constexpr Integer shift_right_mask(size_t amount, seq<Masks...>) {
     return (... |
-        ((take_2nd<Mask>::value << find_min(take_1st<Mask>::value, amount)) - take_2nd<Mask>::value)
+        ((take_2nd<Masks>::value << find_min(take_1st<Masks>::value, amount)) - take_2nd<Masks>::value)
     );
 }
 #else
